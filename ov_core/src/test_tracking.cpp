@@ -45,6 +45,8 @@
 
 using namespace ov_core;
 
+#define BAG_PATH "/home/gustav/catkin_ws_ov/data/V1_01_easy_short.bag"
+
 // Our feature extractor
 TrackBase *extractor;
 
@@ -58,8 +60,11 @@ int clone_states = 10;
 std::deque<double> clonetimes;
 ros::Time time_start;
 
+int num_lostfeats_total = 0;
+int frames_total = 0;
+
 // How many cameras we will do visual tracking on (mono=1, stereo=2)
-int max_cameras = 2;
+int max_cameras = 1;
 
 // Our master function for tracking
 void handle_stereo(double time0, double time1, cv::Mat img0, cv::Mat img1);
@@ -96,7 +101,7 @@ int main(int argc, char **argv) {
 
   // Location of the ROS bag we want to read in
   std::string path_to_bag;
-  nh->param<std::string>("path_bag", path_to_bag, "/home/patrick/datasets/euroc_mav/V1_01_easy.bag");
+  nh->param<std::string>("path_bag", path_to_bag, BAG_PATH);
   // nh->param<std::string>("path_bag", path_to_bag, "/home/patrick/datasets/open_vins/aruco_room_01.bag");
   PRINT_INFO("ros bag path is: %s\n", path_to_bag.c_str());
 
@@ -275,6 +280,7 @@ int main(int argc, char **argv) {
   }
 
   // Done!
+  PRINT_DEBUG("total lost_feats/frame = %.2f", (double)num_lostfeats_total / frames_total);
   return EXIT_SUCCESS;
 }
 
@@ -372,6 +378,10 @@ void handle_stereo(double time0, double time1, cv::Mat img0, cv::Mat img1) {
     double mpf = (double)num_margfeats / frames;
     // DEBUG PRINT OUT
     PRINT_DEBUG("fps = %.2f | lost_feats/frame = %.2f | track_length/lost_feat = %.2f | marg_tracks/frame = %.2f\n", fps, lpf, fpf, mpf);
+
+    num_lostfeats_total += num_lostfeats;
+    frames_total += frames;    
+
     // Reset variables
     frames = 0;
     time_start = time_curr;
