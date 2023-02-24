@@ -1,0 +1,3 @@
+[submodule "ov_core/pixel_aware_gyro_aided_klt_feature_tracker"]
+	path = ov_core/pixel_aware_gyro_aided_klt_feature_tracker
+	url = git@github.com:gussitc/pixel_aware_gyro_aided_klt_feature_tracker.git
