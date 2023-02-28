@@ -29,6 +29,9 @@
 #include "utils/opencv_lambda_body.h"
 #include "utils/print.h"
 
+#include "gyro_aided_tracker.h"
+#include "frame.h"
+
 using namespace ov_core;
 
 void TrackKLT::feed_new_camera(const CameraData &message) {
@@ -135,7 +138,74 @@ void TrackKLT::feed_monocular(const CameraData &message, size_t msg_id) {
   std::vector<cv::KeyPoint> pts_left_new = pts_left_old;
 
   // Lets track temporally
-  perform_matching(img_pyramid_last[cam_id], imgpyr, pts_left_old, pts_left_new, cam_id, cam_id, mask_ll);
+  // perform_matching(img_pyramid_last[cam_id], imgpyr, pts_left_old, pts_left_new, cam_id, cam_id, mask_ll);
+
+  // void perform_matching(const std::vector<cv::Mat> &img0pyr, const std::vector<cv::Mat> &img1pyr, std::vector<cv::KeyPoint> &kpts0,
+                                // std::vector<cv::KeyPoint> &kpts1, size_t id0, size_t id1, std::vector<uchar> &mask_out);
+
+
+  // TODO(gustav): Use the gyro aided tracker
+  /// Pixel-Aware Gyro-Aided KLT Feature Tracking
+  cv::Point3f biasg(0,0,0);
+  IMU::Calib imuCalib;
+  std::vector<IMU::Point> vImuFromLastFrame;
+  std::vector<cv::KeyPoint> empty_keypoint;
+  cv::Mat empty_mat;
+  // auto K = camera_calib.at(cam_id)->get_K();
+  // auto D = camera_calib.at(cam_id)->get_D();
+  auto K_mat = cv::Mat::eye(4,4,CV_32F);
+  auto D_mat = cv::Mat(4,1,CV_32F);
+  
+  // Convert keypoints into points (stupid opencv stuff)
+  std::vector<cv::Point2f> pts0, pts1;
+  for (size_t i = 0; i < pts_left_old.size(); i++) {
+    pts0.push_back(pts_left_old.at(i).pt);
+    pts1.push_back(pts_left_new.at(i).pt);
+  }
+
+  // This is taken from perform_matching as geometric validation requires undistorted points
+  // Normalize these points, so we can then do ransac
+  // We don't want to do ransac on distorted image uvs since the mapping is nonlinear
+  std::vector<cv::Point2f> pts0_n, pts1_n;
+  for (size_t i = 0; i < pts0.size(); i++) {
+    pts0_n.push_back(camera_calib.at(cam_id)->undistort_cv(pts0.at(i)));
+    pts1_n.push_back(camera_calib.at(cam_id)->undistort_cv(pts1.at(i)));
+  }
+
+  // Convert points back to keypoints for use in gyroPredictMatcher (stupid opencv stuff)
+  std::vector<cv::KeyPoint> kpts0_un, kpts1_un;
+  for (size_t i = 0; i < pts0.size(); i++) {
+    // Size of keypoint is seemingly not used for anything
+    kpts0_un.push_back(cv::KeyPoint(pts0_n.at(i), 0));
+    kpts1_un.push_back(cv::KeyPoint(pts1_n.at(i), 0));
+  }
+
+  // Using `OPENCV_OPTICAL_FLOW_PYR_LK` as the predict method should give similar performance to OpenVINS
+  // GyroAidedTracker gyroPredictMatcher(double t, double t_ref, const cv::Mat &imgGrayRef_, const cv::Mat &imgGrayCur_,
+  //                   const std::vector<cv::KeyPoint> &vKeysRef_, const std::vector<cv::KeyPoint> &vKeysCur_,
+  //                   const std::vector<cv::KeyPoint> &vKeysUnRef_, const std::vector<cv::KeyPoint> &vKeysUnCur_,
+  //                   const std::vector<IMU::Point> &vImuFromLastFrame, const cv::Point3f &bias_,
+  //                   cv::Mat K_, cv::Mat DistCoef_, const cv::Mat &normalizeTable_,
+  //                   GyroAidedTracker::eType predictMethod_ = GyroAidedTracker::OPENCV_OPTICAL_FLOW_PYR_LK);
+
+  GyroAidedTracker gyroPredictMatcher(0, 0, img_last[cam_id], img,
+                    pts_left_old, empty_keypoint,
+                    kpts0_un, empty_keypoint,
+                    vImuFromLastFrame, biasg,
+                    K_mat, D_mat, empty_mat,
+                    GyroAidedTracker::OPENCV_OPTICAL_FLOW_PYR_LK);
+
+  int n_predict = gyroPredictMatcher.TrackFeatures();
+  // setFrameWithoutGeometryValid(curFrame, gyroPredictMatcher); // save temporal states
+  gyroPredictMatcher.GeometryValidation();
+  mask_ll = gyroPredictMatcher.mvStatus;
+  
+  // TODO(gustav): this should be the distorted points, but it seems like distortion is not working
+  // maybe images should be just be undistorted to begin with
+  for (size_t i = 0; i < gyroPredictMatcher.mvPtPredictUn.size(); i++) {
+    pts_left_new.at(i).pt = gyroPredictMatcher.mvPtPredictUn.at(i);
+  }
+
   assert(pts_left_new.size() == ids_left_old.size());
   rT4 = boost::posix_time::microsec_clock::local_time();
 
