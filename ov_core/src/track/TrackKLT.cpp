@@ -32,6 +32,8 @@
 #include "gyro_aided_tracker.h"
 #include "frame.h"
 
+#define USE_GYRO_AIDED_TRACKER 1
+
 using namespace ov_core;
 
 void TrackKLT::feed_new_camera(const CameraData &message) {
@@ -137,14 +139,12 @@ void TrackKLT::feed_monocular(const CameraData &message, size_t msg_id) {
   std::vector<uchar> mask_ll;
   std::vector<cv::KeyPoint> pts_left_new = pts_left_old;
 
+#if !USE_GYRO_AIDED_TRACKER
   // Lets track temporally
-  // perform_matching(img_pyramid_last[cam_id], imgpyr, pts_left_old, pts_left_new, cam_id, cam_id, mask_ll);
+  perform_matching(img_pyramid_last[cam_id], imgpyr, pts_left_old, pts_left_new, cam_id, cam_id, mask_ll);
 
-  // void perform_matching(const std::vector<cv::Mat> &img0pyr, const std::vector<cv::Mat> &img1pyr, std::vector<cv::KeyPoint> &kpts0,
-                                // std::vector<cv::KeyPoint> &kpts1, size_t id0, size_t id1, std::vector<uchar> &mask_out);
+#else
 
-
-  // TODO(gustav): Use the gyro aided tracker
   /// Pixel-Aware Gyro-Aided KLT Feature Tracking
   cv::Point3f biasg(0,0,0);
   IMU::Calib imuCalib;
@@ -195,7 +195,7 @@ void TrackKLT::feed_monocular(const CameraData &message, size_t msg_id) {
                     K_mat, D_mat, empty_mat,
                     GyroAidedTracker::OPENCV_OPTICAL_FLOW_PYR_LK);
 
-  int n_predict = gyroPredictMatcher.TrackFeatures();
+  gyroPredictMatcher.TrackFeatures();
   // setFrameWithoutGeometryValid(curFrame, gyroPredictMatcher); // save temporal states
   gyroPredictMatcher.GeometryValidation();
   mask_ll = gyroPredictMatcher.mvStatus;
@@ -203,8 +203,10 @@ void TrackKLT::feed_monocular(const CameraData &message, size_t msg_id) {
   // TODO(gustav): this should be the distorted points, but it seems like distortion is not working
   // maybe images should be just be undistorted to begin with
   for (size_t i = 0; i < gyroPredictMatcher.mvPtPredictUn.size(); i++) {
-    pts_left_new.at(i).pt = gyroPredictMatcher.mvPtPredictUn.at(i);
+    pts_left_new.at(i).pt = camera_calib.at(cam_id)->distort_cv(gyroPredictMatcher.mvPtPredictUn.at(i));
   }
+
+#endif
 
   assert(pts_left_new.size() == ids_left_old.size());
   rT4 = boost::posix_time::microsec_clock::local_time();
