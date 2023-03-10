@@ -189,27 +189,27 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, std::vector<ov_
   D_mat_double.convertTo(D_mat, CV_32F);
   
   // Convert keypoints into points (stupid opencv stuff)
-  std::vector<cv::Point2f> pts0, pts1;
+  std::vector<cv::Point2f> pts0_un, pts1_un;
   for (size_t i = 0; i < pts_left_old.size(); i++) {
-    pts0.push_back(pts_left_old.at(i).pt);
-    pts1.push_back(pts_left_new.at(i).pt);
+    pts0_un.push_back(pts_left_old.at(i).pt);
+    pts1_un.push_back(pts_left_new.at(i).pt);
   }
 
   // This is taken from perform_matching as geometric validation requires undistorted points
   // Normalize these points, so we can then do ransac
   // We don't want to do ransac on distorted image uvs since the mapping is nonlinear
-  std::vector<cv::Point2f> pts0_n, pts1_n;
-  for (size_t i = 0; i < pts0.size(); i++) {
-    pts0_n.push_back(camera_calib.at(cam_id)->undistort_cv(pts0.at(i)));
-    pts1_n.push_back(camera_calib.at(cam_id)->undistort_cv(pts1.at(i)));
+  std::vector<cv::Point2f> pts0_dist, pts1_dist;
+  for (size_t i = 0; i < pts0_un.size(); i++) {
+    pts0_dist.push_back(camera_calib.at(cam_id)->distort_cv(pts0_un.at(i)));
+    pts1_dist.push_back(camera_calib.at(cam_id)->distort_cv(pts1_un.at(i)));
   }
 
   // Convert points back to keypoints for use in gyroPredictMatcher (stupid opencv stuff)
-  std::vector<cv::KeyPoint> kpts0_un, kpts1_un;
-  for (size_t i = 0; i < pts0.size(); i++) {
+  std::vector<cv::KeyPoint> kpts0_dist, kpts1_dist;
+  for (size_t i = 0; i < pts0_un.size(); i++) {
     // Size of keypoint is seemingly not used for anything
-    kpts0_un.push_back(cv::KeyPoint(pts0_n.at(i), 0));
-    kpts1_un.push_back(cv::KeyPoint(pts1_n.at(i), 0));
+    kpts0_dist.push_back(cv::KeyPoint(pts0_dist.at(i), 0));
+    kpts1_dist.push_back(cv::KeyPoint(pts1_dist.at(i), 0));
   }
 
   // Using `OPENCV_OPTICAL_FLOW_PYR_LK` as the predict method should give similar performance to OpenVINS
@@ -221,8 +221,8 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, std::vector<ov_
   //                   GyroAidedTracker::eType predictMethod_ = GyroAidedTracker::OPENCV_OPTICAL_FLOW_PYR_LK);
 
   GyroAidedTracker gyroPredictMatcher(message.timestamp, timestamp_last[cam_id], img_last[cam_id], img,
-                    pts_left_old, std::vector<cv::KeyPoint>(),
-                    kpts0_un, std::vector<cv::KeyPoint>(),
+                    pts_left_old, pts_left_new,
+                    kpts0_dist, kpts1_dist,
                     vImuFromLastFrame, imuCalib, biasg,
                     K_mat, D_mat, cv::Mat(),
                     GyroAidedTracker::OPENCV_OPTICAL_FLOW_PYR_LK,
@@ -236,7 +236,7 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, std::vector<ov_
   // TODO(gustav): this should be the distorted points, but it seems like distortion is not working
   // maybe images should be just be undistorted to begin with
   for (size_t i = 0; i < gyroPredictMatcher.mvPtPredictUn.size(); i++) {
-    pts_left_new.at(i).pt = camera_calib.at(cam_id)->distort_cv(gyroPredictMatcher.mvPtPredictUn.at(i));
+    pts_left_new.at(i).pt = gyroPredictMatcher.mvPtPredictUn.at(i);
   }
 
 #endif
