@@ -127,6 +127,7 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, std::vector<ov_
     img_mask_last[cam_id] = mask;
     pts_last[cam_id] = good_left;
     ids_last[cam_id] = good_ids_left;
+    timestamp_last[cam_id] = message.timestamp;
     return;
   }
 
@@ -154,10 +155,14 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, std::vector<ov_
   std::vector<IMU::Point> vImuFromLastFrame;
   std::vector<cv::KeyPoint> empty_keypoint;
   cv::Mat empty_mat;
-  // auto K = camera_calib.at(cam_id)->get_K();
-  // auto D = camera_calib.at(cam_id)->get_D();
-  auto K_mat = cv::Mat::eye(4,4,CV_32F);
-  auto D_mat = cv::Mat(4,1,CV_32F);
+  auto K = camera_calib.at(cam_id)->get_K();
+  auto D = camera_calib.at(cam_id)->get_D();
+  auto K_mat_double = cv::Mat(3,3,CV_64F, K.val);
+  auto D_mat_double = cv::Mat(4,1,CV_64F, D.val);
+  cv::Mat K_mat;
+  cv::Mat D_mat;
+  K_mat_double.convertTo(K_mat, CV_32F);
+  D_mat_double.convertTo(D_mat, CV_32F);
   
   // Convert keypoints into points (stupid opencv stuff)
   std::vector<cv::Point2f> pts0, pts1;
