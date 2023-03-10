@@ -338,7 +338,7 @@ void handle_stereo(double time0, double time1, cv::Mat img0, cv::Mat img1) {
   //   message.masks.push_back(mask);
   // }
   // FIXME(gustav): the imu timestamps are wrong
-  extractor->feed_new_camera(message);
+  extractor->feed_new_camera_and_imu(message, imu_data);
   // imu_data.clear();
 
   // Display the resulting tracks
