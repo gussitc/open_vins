@@ -30,6 +30,7 @@
 #include <rosbag/bag.h>
 #include <rosbag/view.h>
 #include <sensor_msgs/Image.h>
+#include <sensor_msgs/Imu.h>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -68,6 +69,10 @@ int max_cameras = 1;
 
 // Our master function for tracking
 void handle_stereo(double time0, double time1, cv::Mat img0, cv::Mat img1);
+
+// IMU stuff added by Gustav
+std::vector<ov_core::ImuData> imu_data;
+std::string topic_imu = "/imu0";
 
 // Main function
 int main(int argc, char **argv) {
@@ -221,7 +226,7 @@ int main(int argc, char **argv) {
 
   // Our stereo pair we have
   bool has_left = false;
-  bool has_right = false;
+  // bool has_right = false;
   cv::Mat img0, img1;
   double time0 = time_init.toSec();
   double time1 = time_init.toSec();
@@ -232,6 +237,19 @@ int main(int argc, char **argv) {
     // If ros is wants us to stop, break out
     if (!ros::ok())
       break;
+
+    if (m.getTopic() == topic_imu) {
+      // PRINT_DEBUG("processing imu = %.3f sec\n", msgs.at(m).getTime().toSec() - time_init.toSec());
+      const sensor_msgs::Imu::ConstPtr &msg = m.instantiate<sensor_msgs::Imu>();
+
+      // convert into correct format
+      ov_core::ImuData message;
+      message.timestamp = msg->header.stamp.toSec();
+      message.wm << msg->angular_velocity.x, msg->angular_velocity.y, msg->angular_velocity.z;
+      message.am << msg->linear_acceleration.x, msg->linear_acceleration.y, msg->linear_acceleration.z;
+
+      imu_data.push_back(message);
+    }
 
     // Handle LEFT camera
     sensor_msgs::Image::ConstPtr s0 = m.instantiate<sensor_msgs::Image>();
@@ -252,30 +270,31 @@ int main(int argc, char **argv) {
     }
 
     //  Handle RIGHT camera
-    sensor_msgs::Image::ConstPtr s1 = m.instantiate<sensor_msgs::Image>();
-    if (s1 != nullptr && m.getTopic() == topic_camera1) {
-      // Get the image
-      cv_bridge::CvImageConstPtr cv_ptr;
-      try {
-        cv_ptr = cv_bridge::toCvShare(s1, sensor_msgs::image_encodings::MONO8);
-      } catch (cv_bridge::Exception &e) {
-        PRINT_ERROR(RED "cv_bridge exception: %s\n" RESET, e.what());
-        continue;
-      }
-      // Save to our temp variable
-      has_right = true;
-      cv::equalizeHist(cv_ptr->image, img1);
-      // img1 = cv_ptr->image.clone();
-      time1 = cv_ptr->header.stamp.toSec();
-    }
+    // sensor_msgs::Image::ConstPtr s1 = m.instantiate<sensor_msgs::Image>();
+    // if (s1 != nullptr && m.getTopic() == topic_camera1) {
+    //   // Get the image
+    //   cv_bridge::CvImageConstPtr cv_ptr;
+    //   try {
+    //     cv_ptr = cv_bridge::toCvShare(s1, sensor_msgs::image_encodings::MONO8);
+    //   } catch (cv_bridge::Exception &e) {
+    //     PRINT_ERROR(RED "cv_bridge exception: %s\n" RESET, e.what());
+    //     continue;
+    //   }
+    //   // Save to our temp variable
+    //   has_right = true;
+    //   cv::equalizeHist(cv_ptr->image, img1);
+    //   // img1 = cv_ptr->image.clone();
+    //   time1 = cv_ptr->header.stamp.toSec();
+    // }
 
     // If we have both left and right, then process
-    if (has_left && has_right) {
+    // if (has_left && has_right) {
+    if (has_left) {
       // process
-      handle_stereo(time0, time1, img0, img1);
+      handle_stereo(time0, time1, img0, cv::Mat());
       // reset bools
       has_left = false;
-      has_right = false;
+      // has_right = false;
     }
   }
 
@@ -313,12 +332,14 @@ void handle_stereo(double time0, double time1, cv::Mat img0, cv::Mat img1) {
   message.sensor_ids.push_back(0);
   message.images.push_back(img0);
   message.masks.push_back(mask);
-  if (max_cameras == 2) {
-    message.sensor_ids.push_back(1);
-    message.images.push_back(img1);
-    message.masks.push_back(mask);
-  }
+  // if (max_cameras == 2) {
+  //   message.sensor_ids.push_back(1);
+  //   message.images.push_back(img1);
+  //   message.masks.push_back(mask);
+  // }
+  // FIXME(gustav): the imu timestamps are wrong
   extractor->feed_new_camera(message);
+  // imu_data.clear();
 
   // Display the resulting tracks
   cv::Mat img_active, img_history;
