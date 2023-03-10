@@ -44,6 +44,8 @@
 #include "utils/opencv_yaml_parse.h"
 #include "utils/print.h"
 
+#include "gyro_aided_tracker.h"
+
 using namespace ov_core;
 
 #define BAG_PATH "/home/gustav/catkin_ws_ov/data/V1_01_easy_short.bag"
@@ -175,12 +177,29 @@ int main(int argc, char **argv) {
   PRINT_DEBUG("downsize aruco image: %d\n", do_downsizing);
   PRINT_DEBUG("stereo tracking: %d\n", use_stereo);
 
+  // TODO(gustav): configure camera params
+  double fx = 458.654;
+  double fy = 457.296;
+  double cx = 367.215;
+  double cy = 248.375;
+  double k1 = -0.28340811;
+  double k2 = 0.07395907;
+  double p1 = 0.00019359;
+  double p2 = 1.76187114e-05;
+  double k3 = 0;
+  int fps = 20;
+  int width = 752;
+  int height= 480;
+
+  CameraParams pCameraParams("cam_type", fx, fy, cx, cy, k1, k2, p1, p2, k3, width, height, fps);
+
   // Fake camera info (we don't need this, as we are not using the normalized coordinates for anything)
   std::unordered_map<size_t, std::shared_ptr<CamBase>> cameras;
   for (int i = 0; i < 2; i++) {
     Eigen::Matrix<double, 8, 1> cam0_calib;
     cam0_calib << 1, 1, 0, 0, 0, 0, 0, 0;
-    std::shared_ptr<CamBase> camera_calib = std::make_shared<CamRadtan>(100, 100);
+    // cam0_calib << fx, fy, cx, cy, k1, k2, p1, p2;
+    std::shared_ptr<CamBase> camera_calib = std::make_shared<CamRadtan>(width, height);
     camera_calib->set_value(cam0_calib);
     cameras.insert({i, camera_calib});
   }
@@ -264,8 +283,11 @@ int main(int argc, char **argv) {
       }
       // Save to our temp variable
       has_left = true;
-      cv::equalizeHist(cv_ptr->image, img0);
+      // cv::equalizeHist(cv_ptr->image, img0);
       // img0 = cv_ptr->image.clone();
+
+      cv::remap(cv_ptr->image, img0, pCameraParams.M1, pCameraParams.M2, cv::INTER_LINEAR);
+
       time0 = cv_ptr->header.stamp.toSec();
     }
 
