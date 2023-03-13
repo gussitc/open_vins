@@ -48,7 +48,8 @@
 
 using namespace ov_core;
 
-#define BAG_PATH "/home/gustav/catkin_ws_ov/data/V1_01_easy_short.bag"
+// #define BAG_PATH "/home/gustav/catkin_ws_ov/data/V1_01_easy_short.bag"
+#define BAG_PATH "/home/gustav/catkin_ws_ov/data/V1_03_difficult.bag"
 
 // Our feature extractor
 TrackBase *extractor;
@@ -64,7 +65,10 @@ std::deque<double> clonetimes;
 ros::Time time_start;
 
 int num_lostfeats_total = 0;
+int featslengths_total = 0;
+int num_margfeats_total = 0;
 int frames_total = 0;
+double time_total = 0;
 
 // How many cameras we will do visual tracking on (mono=1, stereo=2)
 int max_cameras = 1;
@@ -73,8 +77,28 @@ int max_cameras = 1;
 void handle_stereo(double time0, double time1, cv::Mat img0, cv::Mat img1);
 
 // IMU stuff added by Gustav
-std::vector<ov_core::ImuData> imu_data;
+std::queue<ov_core::ImuData> imu_buffer;
 std::string topic_imu = "/imu0";
+double img_time_prev = -1;
+double img_time_curr = -1;
+
+// TODO(gustav): configure camera params
+double fx = 458.654;
+double fy = 457.296;
+double cx = 367.215;
+double cy = 248.375;
+double k1 = -0.28340811;
+double k2 = 0.07395907;
+double p1 = 0.00019359;
+double p2 = 1.76187114e-05;
+double k3 = 0;
+int fps = 20;
+int width = 752;
+int height= 480;
+
+namespace ov_core {
+  CameraParams pCameraParams("cam_type", fx, fy, cx, cy, k1, k2, p1, p2, k3, width, height, fps);
+}
 
 // Main function
 int main(int argc, char **argv) {
@@ -177,28 +201,13 @@ int main(int argc, char **argv) {
   PRINT_DEBUG("downsize aruco image: %d\n", do_downsizing);
   PRINT_DEBUG("stereo tracking: %d\n", use_stereo);
 
-  // TODO(gustav): configure camera params
-  double fx = 458.654;
-  double fy = 457.296;
-  double cx = 367.215;
-  double cy = 248.375;
-  double k1 = -0.28340811;
-  double k2 = 0.07395907;
-  double p1 = 0.00019359;
-  double p2 = 1.76187114e-05;
-  double k3 = 0;
-  int fps = 20;
-  int width = 752;
-  int height= 480;
-
-  CameraParams pCameraParams("cam_type", fx, fy, cx, cy, k1, k2, p1, p2, k3, width, height, fps);
 
   // Fake camera info (we don't need this, as we are not using the normalized coordinates for anything)
   std::unordered_map<size_t, std::shared_ptr<CamBase>> cameras;
   for (int i = 0; i < 2; i++) {
     Eigen::Matrix<double, 8, 1> cam0_calib;
-    cam0_calib << 1, 1, 0, 0, 0, 0, 0, 0;
-    // cam0_calib << fx, fy, cx, cy, k1, k2, p1, p2;
+    // cam0_calib << 1, 1, 0, 0, 0, 0, 0, 0;
+    cam0_calib << fx, fy, cx, cy, k1, k2, p1, p2;
     std::shared_ptr<CamBase> camera_calib = std::make_shared<CamRadtan>(width, height);
     camera_calib->set_value(cam0_calib);
     cameras.insert({i, camera_calib});
@@ -267,7 +276,7 @@ int main(int argc, char **argv) {
       message.wm << msg->angular_velocity.x, msg->angular_velocity.y, msg->angular_velocity.z;
       message.am << msg->linear_acceleration.x, msg->linear_acceleration.y, msg->linear_acceleration.z;
 
-      imu_data.push_back(message);
+      imu_buffer.push(message);
     }
 
     // Handle LEFT camera
@@ -289,6 +298,8 @@ int main(int argc, char **argv) {
       cv::remap(cv_ptr->image, img0, pCameraParams.M1, pCameraParams.M2, cv::INTER_LINEAR);
 
       time0 = cv_ptr->header.stamp.toSec();
+      img_time_prev = img_time_curr;
+      img_time_curr = time0;
     }
 
     //  Handle RIGHT camera
@@ -321,7 +332,11 @@ int main(int argc, char **argv) {
   }
 
   // Done!
-  PRINT_DEBUG("total lost_feats/frame = %.2f", (double)num_lostfeats_total / frames_total);
+  PRINT_DEBUG("average fps = %.2f\n", (double) frames_total/ time_total); 
+  PRINT_DEBUG("average lost_feats/frame = %.2f\n", (double)num_lostfeats_total / frames_total);
+  PRINT_DEBUG("average track_length/lost_feat = %.2f\n", (double) featslengths_total / num_lostfeats_total);
+  PRINT_DEBUG("average marg_tracks/frame = %.2f\n", (double)num_margfeats_total / frames_total);
+  PRINT_DEBUG("average track_length/frame = %.2f\n", (double)featslengths_total / frames_total);
   return EXIT_SUCCESS;
 }
 
@@ -360,8 +375,23 @@ void handle_stereo(double time0, double time1, cv::Mat img0, cv::Mat img1) {
   //   message.masks.push_back(mask);
   // }
   // FIXME(gustav): the imu timestamps are wrong
+
+  std::vector<ov_core::ImuData> imu_data;
+
+  if (img_time_prev != -1){
+    while(!imu_buffer.empty() && imu_buffer.front().timestamp < img_time_prev){
+          // && std::abs(imu_buf.front()->header.stamp.toSec() - time_prev) > 3.0){ // FIXME(gustav): this can't be needed
+      imu_buffer.pop();
+    }
+
+    // Load imu measurements from previous frame
+    while(!imu_buffer.empty() && imu_buffer.front().timestamp < img_time_curr)
+    {
+      imu_data.push_back(imu_buffer.front());
+      imu_buffer.pop();
+    }
+  }
   extractor->feed_new_camera_and_imu(message, imu_data);
-  // imu_data.clear();
 
   // Display the resulting tracks
   cv::Mat img_active, img_history;
@@ -415,13 +445,17 @@ void handle_stereo(double time0, double time1, cv::Mat img0, cv::Mat img1) {
   // if (time_curr.toSec()-time_start.toSec() > 2) {
   if (frames > 60) {
     // Calculate the FPS
-    double fps = (double)frames / (time_curr.toSec() - time_start.toSec());
+    double dt  = (time_curr.toSec() - time_start.toSec());
+    double fps = (double)frames / dt;
     double lpf = (double)num_lostfeats / frames;
     double fpf = (double)featslengths / num_lostfeats;
     double mpf = (double)num_margfeats / frames;
     // DEBUG PRINT OUT
     PRINT_DEBUG("fps = %.2f | lost_feats/frame = %.2f | track_length/lost_feat = %.2f | marg_tracks/frame = %.2f\n", fps, lpf, fpf, mpf);
 
+    time_total += dt;
+    num_margfeats_total += num_margfeats;
+    featslengths_total += featslengths;
     num_lostfeats_total += num_lostfeats;
     frames_total += frames;    
 

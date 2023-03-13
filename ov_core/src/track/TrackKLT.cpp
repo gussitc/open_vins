@@ -38,7 +38,7 @@ using namespace ov_core;
 
 void TrackKLT::feed_new_camera(const CameraData &message) {};
 
-void TrackKLT::feed_new_camera_and_imu(const CameraData &message, std::vector<ov_core::ImuData> &imu_data){
+void TrackKLT::feed_new_camera_and_imu(const CameraData &message, const std::vector<ov_core::ImuData> &imu_data){
 
   // Error check that we have all the data
   if (message.sensor_ids.empty() || message.sensor_ids.size() != message.images.size() || message.images.size() != message.masks.size()) {
@@ -102,7 +102,7 @@ void TrackKLT::feed_new_camera_and_imu(const CameraData &message, std::vector<ov
 
 void TrackKLT::feed_monocular(const CameraData &message, size_t msg_id) {};
 
-void TrackKLT::feed_monocular_and_imu(const CameraData &message, std::vector<ov_core::ImuData> &imu_data, size_t msg_id){
+void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vector<ov_core::ImuData> &imu_data, size_t msg_id){
   // Lock this data feed for this camera
   size_t cam_id = message.sensor_ids.at(msg_id);
   std::lock_guard<std::mutex> lck(mtx_feeds.at(cam_id));
@@ -160,23 +160,27 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, std::vector<ov_
      0.0, 0.0, 0.0, 1.0};
   imuCalib.Tbc = cv::Mat(4, 4, CV_32F, Tbc_data);
 
-  std::vector<IMU::Point> vImuFromLastFrame;
-  auto it = imu_data.begin();
-  while (it != imu_data.end() && it->timestamp < message.timestamp)
+  // double last_timestamp = timestamp_last[cam_id];
+  // assert(imu_data.begin()->timestamp != imu_data.end()->timestamp);
+  // imu_data.erase(std::remove_if(imu_data.begin(), imu_data.end(),
+  //   [last_timestamp](ov_core::ImuData &imu){ return imu.timestamp < last_timestamp; }), imu_data.end());
+
+  // assert(imu_data.begin()->timestamp != imu_data.end()->timestamp);
+
+  std::vector<IMU::Point> vImuFromLastFrame(imu_data.size());
+  // auto it = imu_data.begin();
+  // for (auto &it : imu_data)
+  for (size_t i = 0; i < imu_data.size(); i++)
   {
-    if (it->timestamp < timestamp_last[cam_id]){
-      imu_data.erase(it);
-    }
-    IMU::Point imu;
-    imu.t   = it->timestamp;
-    imu.a.x = it->am.x();
-    imu.a.y = it->am.y();
-    imu.a.z = it->am.z();
-    imu.w.x = it->wm.x();
-    imu.w.y = it->wm.y();
-    imu.w.z = it->wm.z();
-    vImuFromLastFrame.push_back(imu);
-    it++;
+    auto &it = imu_data[i];
+    IMU::Point &imu = vImuFromLastFrame[i];
+    imu.t   = it.timestamp;
+    imu.a.x = it.am.x();
+    imu.a.y = it.am.y();
+    imu.a.z = it.am.z();
+    imu.w.x = it.wm.x();
+    imu.w.y = it.wm.y();
+    imu.w.z = it.wm.z();
   }
 
   auto K = camera_calib.at(cam_id)->get_K();
@@ -189,28 +193,38 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, std::vector<ov_
   D_mat_double.convertTo(D_mat, CV_32F);
   
   // Convert keypoints into points (stupid opencv stuff)
-  std::vector<cv::Point2f> pts0_un, pts1_un;
+  std::vector<cv::Point2f> corners_un, pts1_un;
   for (size_t i = 0; i < pts_left_old.size(); i++) {
-    pts0_un.push_back(pts_left_old.at(i).pt);
+    corners_un.push_back(pts_left_old.at(i).pt);
     pts1_un.push_back(pts_left_new.at(i).pt);
+  }
+
+  extern CameraParams pCameraParams; // defined in test_tracking.cpp
+
+  // Distort points
+  std::vector<cv::Point2f> corners_dist;
+  std::vector<cv::KeyPoint> pts_left_old_dist;
+  DistortVecPoints(corners_un, corners_dist, pCameraParams.mK, pCameraParams.mDistCoef);
+  for(size_t i = 0, iend = corners_dist.size(); i < iend; i++){
+    pts_left_old_dist.push_back(cv::KeyPoint(corners_dist[i], 0));
   }
 
   // This is taken from perform_matching as geometric validation requires undistorted points
   // Normalize these points, so we can then do ransac
   // We don't want to do ransac on distorted image uvs since the mapping is nonlinear
-  std::vector<cv::Point2f> pts0_dist, pts1_dist;
-  for (size_t i = 0; i < pts0_un.size(); i++) {
-    pts0_dist.push_back(camera_calib.at(cam_id)->distort_cv(pts0_un.at(i)));
-    pts1_dist.push_back(camera_calib.at(cam_id)->distort_cv(pts1_un.at(i)));
-  }
+  // std::vector<cv::Point2f> pts0_dist, pts1_dist;
+  // for (size_t i = 0; i < corners_un.size(); i++) {
+  //   pts0_dist.push_back(camera_calib.at(cam_id)->distort_cv(corners_un.at(i)));
+  //   pts1_dist.push_back(camera_calib.at(cam_id)->distort_cv(pts1_un.at(i)));
+  // }
 
   // Convert points back to keypoints for use in gyroPredictMatcher (stupid opencv stuff)
-  std::vector<cv::KeyPoint> kpts0_dist, kpts1_dist;
-  for (size_t i = 0; i < pts0_un.size(); i++) {
-    // Size of keypoint is seemingly not used for anything
-    kpts0_dist.push_back(cv::KeyPoint(pts0_dist.at(i), 0));
-    kpts1_dist.push_back(cv::KeyPoint(pts1_dist.at(i), 0));
-  }
+  // std::vector<cv::KeyPoint> kpts0_dist, kpts1_dist;
+  // for (size_t i = 0; i < corners_un.size(); i++) {
+  //   // Size of keypoint is seemingly not used for anything
+  //   kpts0_dist.push_back(cv::KeyPoint(pts0_dist.at(i), 0));
+  //   kpts1_dist.push_back(cv::KeyPoint(pts1_dist.at(i), 0));
+  // }
 
   // Using `OPENCV_OPTICAL_FLOW_PYR_LK` as the predict method should give similar performance to OpenVINS
   // GyroAidedTracker gyroPredictMatcher(double t, double t_ref, const cv::Mat &imgGrayRef_, const cv::Mat &imgGrayCur_,
@@ -221,11 +235,12 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, std::vector<ov_
   //                   GyroAidedTracker::eType predictMethod_ = GyroAidedTracker::OPENCV_OPTICAL_FLOW_PYR_LK);
 
   GyroAidedTracker gyroPredictMatcher(message.timestamp, timestamp_last[cam_id], img_last[cam_id], img,
-                    pts_left_old, pts_left_new,
-                    kpts0_dist, kpts1_dist,
+                    pts_left_old_dist, std::vector<cv::KeyPoint>(),
+                    pts_left_old, std::vector<cv::KeyPoint>(),
                     vImuFromLastFrame, imuCalib, biasg,
-                    K_mat, D_mat, cv::Mat(),
-                    GyroAidedTracker::OPENCV_OPTICAL_FLOW_PYR_LK,
+                    pCameraParams.mK, pCameraParams.mDistCoef, cv::Mat(),
+                    // GyroAidedTracker::OPENCV_OPTICAL_FLOW_PYR_LK,
+                    GyroAidedTracker::GYRO_PREDICT_WITH_OPTICAL_FLOW_REFINED_CONSIDER_ILLUMINATION_DEFORMATION,
                     GyroAidedTracker::PIXEL_AWARE_PREDICTION);
 
   gyroPredictMatcher.TrackFeatures();

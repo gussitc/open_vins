@@ -95,7 +95,7 @@ public:
    * @param message Contains our timestamp, images, and camera ids
    */
   virtual void feed_new_camera(const CameraData &message) = 0;
-  virtual void feed_new_camera_and_imu(const CameraData &message, std::vector<ov_core::ImuData> &imu_data) = 0;
+  virtual void feed_new_camera_and_imu(const CameraData &message, const std::vector<ov_core::ImuData> &imu_data) = 0;
 
   /**
    * @brief Shows features extracted in the last image

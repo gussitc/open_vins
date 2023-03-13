@@ -61,7 +61,7 @@ public:
    * @param message Contains our timestamp, images, and camera ids
    */
   void feed_new_camera(const CameraData &message) override;
-  void feed_new_camera_and_imu(const CameraData &message, std::vector<ov_core::ImuData> &imu_data) override;
+  void feed_new_camera_and_imu(const CameraData &message, const std::vector<ov_core::ImuData> &imu_data) override;
 
 protected:
   /**
@@ -70,7 +70,7 @@ protected:
    * @param msg_id the camera index in message data vector
    */
   void feed_monocular(const CameraData &message, size_t msg_id);
-  void feed_monocular_and_imu(const CameraData &message, std::vector<ov_core::ImuData> &imu_data, size_t msg_id);
+  void feed_monocular_and_imu(const CameraData &message, const std::vector<ov_core::ImuData> &imu_data, size_t msg_id);
 
   /**
    * @brief Process new stereo pair of images
