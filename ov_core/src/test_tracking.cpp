@@ -49,7 +49,7 @@
 using namespace ov_core;
 
 // #define BAG_PATH "/home/gustav/catkin_ws_ov/data/V1_01_easy_short.bag"
-#define BAG_PATH "/home/gustav/catkin_ws_ov/data/V1_03_difficult.bag"
+#define BAG_PATH "/home/gustav/catkin_ws_ov/data/V1_03_difficult_short.bag"
 
 // Our feature extractor
 TrackBase *extractor;
@@ -67,6 +67,8 @@ ros::Time time_start;
 int num_lostfeats_total = 0;
 int featslengths_total = 0;
 int num_margfeats_total = 0;
+int ref_num_keys_total = 0;
+int num_good_tracks_total = 0;
 int frames_total = 0;
 double time_total = 0;
 
@@ -97,6 +99,8 @@ int width = 752;
 int height= 480;
 
 namespace ov_core {
+  size_t ref_num_keys = 0;
+  size_t num_good_tracks = 0;
   CameraParams pCameraParams("cam_type", fx, fy, cx, cy, k1, k2, p1, p2, k3, width, height, fps);
 }
 
@@ -337,6 +341,7 @@ int main(int argc, char **argv) {
   PRINT_DEBUG("average track_length/lost_feat = %.2f\n", (double) featslengths_total / num_lostfeats_total);
   PRINT_DEBUG("average marg_tracks/frame = %.2f\n", (double)num_margfeats_total / frames_total);
   PRINT_DEBUG("average track_length/frame = %.2f\n", (double)featslengths_total / frames_total);
+  PRINT_DEBUG("average good_tracks/num_ref_keys = %.2f\n", (double)num_good_tracks_total / ref_num_keys_total);
   return EXIT_SUCCESS;
 }
 
@@ -374,7 +379,6 @@ void handle_stereo(double time0, double time1, cv::Mat img0, cv::Mat img1) {
   //   message.images.push_back(img1);
   //   message.masks.push_back(mask);
   // }
-  // FIXME(gustav): the imu timestamps are wrong
 
   std::vector<ov_core::ImuData> imu_data;
 
@@ -392,6 +396,8 @@ void handle_stereo(double time0, double time1, cv::Mat img0, cv::Mat img1) {
     }
   }
   extractor->feed_new_camera_and_imu(message, imu_data);
+  ref_num_keys_total += ref_num_keys;
+  num_good_tracks_total += num_good_tracks;
 
   // Display the resulting tracks
   cv::Mat img_active, img_history;
@@ -424,17 +430,17 @@ void handle_stereo(double time0, double time1, cv::Mat img0, cv::Mat img1) {
   clonetimes.push_back(time0);
 
   // Marginalized features if we have reached 5 frame tracks
-  if ((int)clonetimes.size() >= clone_states) {
-    // Remove features that have reached their max track length
-    double margtime = clonetimes.at(0);
-    clonetimes.pop_front();
-    std::vector<std::shared_ptr<Feature>> feats_marg = database->features_containing(margtime);
-    num_margfeats += feats_marg.size();
-    // Delete theses feature pointers
-    for (size_t i = 0; i < feats_marg.size(); i++) {
-      feats_marg[i]->to_delete = true;
-    }
-  }
+  // if ((int)clonetimes.size() >= clone_states) {
+  //   // Remove features that have reached their max track length
+  //   double margtime = clonetimes.at(0);
+  //   clonetimes.pop_front();
+  //   std::vector<std::shared_ptr<Feature>> feats_marg = database->features_containing(margtime);
+  //   num_margfeats += feats_marg.size();
+  //   // Delete theses feature pointers
+  //   for (size_t i = 0; i < feats_marg.size(); i++) {
+  //     feats_marg[i]->to_delete = true;
+  //   }
+  // }
 
   // Tell the feature database to delete old features
   database->cleanup();

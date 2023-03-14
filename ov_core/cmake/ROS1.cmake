@@ -38,7 +38,6 @@ list(APPEND thirdparty_libraries
         ${OpenCV_LIBRARIES}
         ${catkin_LIBRARIES}
         pixel_aware_gyro_aided_klt_feature_tracker
-        ${PROJECT_SOURCE_DIR}/pixel_aware_gyro_aided_klt_feature_tracker/Thirdparty/glog/lib/libglog.so
 )
 
 ##################################################

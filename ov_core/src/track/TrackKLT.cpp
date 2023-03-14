@@ -239,6 +239,7 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vect
                     pts_left_old, std::vector<cv::KeyPoint>(),
                     vImuFromLastFrame, imuCalib, biasg,
                     pCameraParams.mK, pCameraParams.mDistCoef, cv::Mat(),
+                    // GyroAidedTracker::IMAGE_ONLY_OPTICAL_FLOW_CONSIDER_ILLUMINATION,
                     // GyroAidedTracker::OPENCV_OPTICAL_FLOW_PYR_LK,
                     GyroAidedTracker::GYRO_PREDICT_WITH_OPTICAL_FLOW_REFINED_CONSIDER_ILLUMINATION_DEFORMATION,
                     GyroAidedTracker::PIXEL_AWARE_PREDICTION);
@@ -293,8 +294,14 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vect
     }
   }
 
+  extern size_t ref_num_keys;
+  extern size_t num_good_tracks;
+  ref_num_keys = pts_left_old.size();
+  num_good_tracks = good_left.size();
+
   // Update our feature database, with theses new observations
   for (size_t i = 0; i < good_left.size(); i++) {
+    // FIXME(gustav): it is not correct to undistort here
     cv::Point2f npt_l = camera_calib.at(cam_id)->undistort_cv(good_left.at(i).pt);
     database->update_feature(good_ids_left.at(i), message.timestamp, cam_id, good_left.at(i).pt.x, good_left.at(i).pt.y, npt_l.x, npt_l.y);
   }
