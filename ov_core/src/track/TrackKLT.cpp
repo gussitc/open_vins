@@ -234,6 +234,9 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vect
   //                   cv::Mat K_, cv::Mat DistCoef_, const cv::Mat &normalizeTable_,
   //                   GyroAidedTracker::eType predictMethod_ = GyroAidedTracker::OPENCV_OPTICAL_FLOW_PYR_LK);
 
+  extern int half_patch_size;
+  extern std::string save_folder_path;
+
   GyroAidedTracker gyroPredictMatcher(message.timestamp, timestamp_last[cam_id], img_last[cam_id], img,
                     pts_left_old_dist, std::vector<cv::KeyPoint>(),
                     pts_left_old, std::vector<cv::KeyPoint>(),
@@ -242,7 +245,8 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vect
                     // GyroAidedTracker::IMAGE_ONLY_OPTICAL_FLOW_CONSIDER_ILLUMINATION,
                     // GyroAidedTracker::OPENCV_OPTICAL_FLOW_PYR_LK,
                     GyroAidedTracker::GYRO_PREDICT_WITH_OPTICAL_FLOW_REFINED_CONSIDER_ILLUMINATION_DEFORMATION,
-                    GyroAidedTracker::PIXEL_AWARE_PREDICTION);
+                    GyroAidedTracker::PIXEL_AWARE_PREDICTION,
+                    save_folder_path, half_patch_size);
 
   gyroPredictMatcher.TrackFeatures();
   // setFrameWithoutGeometryValid(curFrame, gyroPredictMatcher); // save temporal states

@@ -99,6 +99,9 @@ int width = 752;
 int height= 480;
 
 namespace ov_core {
+  int half_patch_size = 10;
+  std::string save_folder_path("/home/gustav/catkin_ws_ov/src/open_vins/ov_core/output/");
+
   size_t ref_num_keys = 0;
   size_t num_good_tracks = 0;
   CameraParams pCameraParams("cam_type", fx, fy, cx, cy, k1, k2, p1, p2, k3, width, height, fps);
@@ -145,6 +148,12 @@ int main(int argc, char **argv) {
   double bag_start, bag_durr;
   nh->param<double>("bag_start", bag_start, 0);
   nh->param<double>("bag_durr", bag_durr, -1);
+
+  // clear output files instead of appending
+  std::ofstream fp1(save_folder_path + GyroAidedTracker::TRACK_FEATURES_FILE_NAME, ofstream::out);
+  fp1.close();
+  std::ofstream fp2(save_folder_path + GyroAidedTracker::TIME_COST_FILE_NAME, ofstream::out);
+  fp2.close();
 
   //===================================================================================
   //===================================================================================
@@ -337,10 +346,10 @@ int main(int argc, char **argv) {
 
   // Done!
   PRINT_DEBUG("average fps = %.2f\n", (double) frames_total/ time_total); 
+  PRINT_DEBUG("average num_ref_keys = %.2f\n", (double) ref_num_keys_total / frames_total);
   PRINT_DEBUG("average lost_feats/frame = %.2f\n", (double)num_lostfeats_total / frames_total);
   PRINT_DEBUG("average track_length/lost_feat = %.2f\n", (double) featslengths_total / num_lostfeats_total);
   PRINT_DEBUG("average marg_tracks/frame = %.2f\n", (double)num_margfeats_total / frames_total);
-  PRINT_DEBUG("average track_length/frame = %.2f\n", (double)featslengths_total / frames_total);
   PRINT_DEBUG("average good_tracks/num_ref_keys = %.2f\n", (double)num_good_tracks_total / ref_num_keys_total);
   return EXIT_SUCCESS;
 }
@@ -430,17 +439,17 @@ void handle_stereo(double time0, double time1, cv::Mat img0, cv::Mat img1) {
   clonetimes.push_back(time0);
 
   // Marginalized features if we have reached 5 frame tracks
-  // if ((int)clonetimes.size() >= clone_states) {
-  //   // Remove features that have reached their max track length
-  //   double margtime = clonetimes.at(0);
-  //   clonetimes.pop_front();
-  //   std::vector<std::shared_ptr<Feature>> feats_marg = database->features_containing(margtime);
-  //   num_margfeats += feats_marg.size();
-  //   // Delete theses feature pointers
-  //   for (size_t i = 0; i < feats_marg.size(); i++) {
-  //     feats_marg[i]->to_delete = true;
-  //   }
-  // }
+  if ((int)clonetimes.size() >= clone_states) {
+    // Remove features that have reached their max track length
+    double margtime = clonetimes.at(0);
+    clonetimes.pop_front();
+    std::vector<std::shared_ptr<Feature>> feats_marg = database->features_containing(margtime);
+    num_margfeats += feats_marg.size();
+    // Delete theses feature pointers
+    for (size_t i = 0; i < feats_marg.size(); i++) {
+      feats_marg[i]->to_delete = true;
+    }
+  }
 
   // Tell the feature database to delete old features
   database->cleanup();
