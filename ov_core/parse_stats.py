@@ -1,5 +1,6 @@
 import re
 import numpy as np
+import pathlib
 
 # Example line:
 # T: 1403715283.362143, RefKey Num: 500, patchMatchPredict Num: 495, Geo. valid: 492, Pred. suc. rate: 99.3939%, feature track rate: 98.4%, IMU num: 10, track_score: 5728.83, recall rate: 99%
@@ -7,7 +8,9 @@ import numpy as np
 # feature track rate = Geo. valid / RefKey Num
 
 # folder_path = 'ov_core/pixel_aware_gyro_aided_klt_feature_tracker/Examples/ROS/ROS_Demo_Feature_Tracking/output/'
-folder_path = 'ov_core/output/'
+# folder_path = pathlib.Path(__file__).parent.resolve().as_posix() + '/output/'
+folder_path = pathlib.Path(__file__).parent.resolve().as_posix() + '/pixel_aware_gyro_aided_klt_feature_tracker/Examples/ROS/ROS_Demo_Feature_Tracking/output/'
+
 # file_name = 'trackFeatures_gyro.txt'
 # file_name = 'trackFeatures_opencv.txt'
 file_name = 'trackFeatures.txt'
@@ -39,4 +42,8 @@ runtime = times[-1] - times[0]
 print(f'runtime: {runtime:.2f}, num_frames: {frame_counter}, fps: {frame_counter/runtime:.2f}')
 print(f'average ref_key_num: {np.mean(ref_key_num):.2f}')
 print(f'average lost_feats/frame: {np.mean(lost_feats):.2f}')
-print(f'average feature track rate: {np.mean(feature_track_rate):.2f}')
+geo_valid_sum = np.sum(geo_valid)
+ref_key_num_sum = np.sum(ref_key_num)
+print(f'geo valid: {geo_valid_sum}')
+print(f'ref_key_num: {ref_key_num_sum}')
+print(f'average feature track rate: {geo_valid_sum/ref_key_num_sum:.4f}')

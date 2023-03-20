@@ -32,7 +32,7 @@
 #include "gyro_aided_tracker.h"
 #include "frame.h"
 
-#define USE_GYRO_AIDED_TRACKER 1
+#define USE_GYRO_AIDED_TRACKER 0
 
 using namespace ov_core;
 
@@ -250,7 +250,7 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vect
 
   gyroPredictMatcher.TrackFeatures();
   // setFrameWithoutGeometryValid(curFrame, gyroPredictMatcher); // save temporal states
-  gyroPredictMatcher.GeometryValidation();
+  int num_inliers = gyroPredictMatcher.GeometryValidation();
   mask_ll = gyroPredictMatcher.mvStatus;
   
   // TODO(gustav): this should be the distorted points, but it seems like distortion is not working
@@ -299,8 +299,10 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vect
   }
 
   extern size_t ref_num_keys;
+  // extern size_t num_new_tracks;
   extern size_t num_good_tracks;
   ref_num_keys = pts_left_old.size();
+  // num_new_tracks = ref_num_keys - pts_before_detect;
   num_good_tracks = good_left.size();
 
   // Update our feature database, with theses new observations
@@ -598,7 +600,8 @@ void TrackKLT::perform_detection_monocular(const std::vector<cv::Mat> &img0pyr, 
 
   // First compute how many more features we need to extract from this image
   // If we don't need any features, just return
-  double min_feat_percent = 0.50;
+  // double min_feat_percent = 0.50;
+  double min_feat_percent = 1.0;
   int num_featsneeded = num_features - (int)pts0.size();
   if (num_featsneeded < std::min(20, (int)(min_feat_percent * num_features)))
     return;

@@ -68,6 +68,7 @@ int num_lostfeats_total = 0;
 int featslengths_total = 0;
 int num_margfeats_total = 0;
 int ref_num_keys_total = 0;
+int num_new_tracks_total = 0;
 int num_good_tracks_total = 0;
 int frames_total = 0;
 double time_total = 0;
@@ -99,10 +100,11 @@ int width = 752;
 int height= 480;
 
 namespace ov_core {
-  int half_patch_size = 10;
+  int half_patch_size = 5;
   std::string save_folder_path("/home/gustav/catkin_ws_ov/src/open_vins/ov_core/output/");
 
   size_t ref_num_keys = 0;
+  size_t num_new_keys = 0;
   size_t num_good_tracks = 0;
   CameraParams pCameraParams("cam_type", fx, fy, cx, cy, k1, k2, p1, p2, k3, width, height, fps);
 }
@@ -346,11 +348,15 @@ int main(int argc, char **argv) {
 
   // Done!
   PRINT_DEBUG("average fps = %.2f\n", (double) frames_total/ time_total); 
+  PRINT_DEBUG("frames total = %d\n", frames_total); 
+  PRINT_DEBUG("ref keys total = %d\n", ref_num_keys_total); 
+  PRINT_DEBUG("good tracks total = %d\n", num_good_tracks_total); 
   PRINT_DEBUG("average num_ref_keys = %.2f\n", (double) ref_num_keys_total / frames_total);
+  PRINT_DEBUG("average num_new_tracks = %.2f\n", (double) num_new_tracks_total / frames_total);
   PRINT_DEBUG("average lost_feats/frame = %.2f\n", (double)num_lostfeats_total / frames_total);
   PRINT_DEBUG("average track_length/lost_feat = %.2f\n", (double) featslengths_total / num_lostfeats_total);
   PRINT_DEBUG("average marg_tracks/frame = %.2f\n", (double)num_margfeats_total / frames_total);
-  PRINT_DEBUG("average good_tracks/num_ref_keys = %.2f\n", (double)num_good_tracks_total / ref_num_keys_total);
+  PRINT_DEBUG("average good_tracks/num_ref_keys = %.4f\n", (double)num_good_tracks_total / ref_num_keys_total);
   return EXIT_SUCCESS;
 }
 
@@ -362,20 +368,20 @@ void handle_stereo(double time0, double time1, cv::Mat img0, cv::Mat img1) {
   // Animate our dynamic mask moving
   // Very simple ball bounding around the screen example
   cv::Mat mask = cv::Mat::zeros(cv::Size(img0.cols, img0.rows), CV_8UC1);
-  static cv::Point2f ball_center;
-  static cv::Point2f ball_velocity;
-  if (ball_velocity.x == 0 || ball_velocity.y == 0) {
-    ball_center.x = (float)img0.cols / 2.0f;
-    ball_center.y = (float)img0.rows / 2.0f;
-    ball_velocity.x = 2.5;
-    ball_velocity.y = 2.5;
-  }
-  ball_center += ball_velocity;
-  if (ball_center.x < 0 || (int)ball_center.x > img0.cols)
-    ball_velocity.x *= -1;
-  if (ball_center.y < 0 || (int)ball_center.y > img0.rows)
-    ball_velocity.y *= -1;
-  cv::circle(mask, ball_center, 100, cv::Scalar(255), cv::FILLED);
+  // static cv::Point2f ball_center;
+  // static cv::Point2f ball_velocity;
+  // if (ball_velocity.x == 0 || ball_velocity.y == 0) {
+  //   ball_center.x = (float)img0.cols / 2.0f;
+  //   ball_center.y = (float)img0.rows / 2.0f;
+  //   ball_velocity.x = 2.5;
+  //   ball_velocity.y = 2.5;
+  // }
+  // ball_center += ball_velocity;
+  // if (ball_center.x < 0 || (int)ball_center.x > img0.cols)
+  //   ball_velocity.x *= -1;
+  // if (ball_center.y < 0 || (int)ball_center.y > img0.rows)
+  //   ball_velocity.y *= -1;
+  // cv::circle(mask, ball_center, 100, cv::Scalar(255), cv::FILLED);
 
   // Process this new image
   ov_core::CameraData message;
@@ -405,8 +411,11 @@ void handle_stereo(double time0, double time1, cv::Mat img0, cv::Mat img1) {
     }
   }
   extractor->feed_new_camera_and_imu(message, imu_data);
-  ref_num_keys_total += ref_num_keys;
-  num_good_tracks_total += num_good_tracks;
+  if (ref_num_keys != 0){
+    ref_num_keys_total += ref_num_keys;
+    num_good_tracks_total += num_good_tracks;
+    frames_total += 1;    
+  }
 
   // Display the resulting tracks
   cv::Mat img_active, img_history;
@@ -422,6 +431,10 @@ void handle_stereo(double time0, double time1, cv::Mat img0, cv::Mat img1) {
   std::shared_ptr<FeatureDatabase> database = extractor->get_feature_database();
   std::vector<std::shared_ptr<Feature>> feats_lost = database->features_not_containing_newer(time0);
   num_lostfeats += feats_lost.size();
+  num_lostfeats_total += feats_lost.size();
+
+  std::vector<std::shared_ptr<Feature>> feats_old = database->features_containing_older(time0);
+  num_new_tracks_total += database->size() - feats_old.size();
 
   // Mark theses feature pointers as deleted
   for (size_t i = 0; i < feats_lost.size(); i++) {
@@ -432,6 +445,7 @@ void handle_stereo(double time0, double time1, cv::Mat img0, cv::Mat img1) {
     }
     // Update stats
     featslengths += total_meas;
+    featslengths_total += total_meas;
     feats_lost[i]->to_delete = true;
   }
 
@@ -445,6 +459,7 @@ void handle_stereo(double time0, double time1, cv::Mat img0, cv::Mat img1) {
     clonetimes.pop_front();
     std::vector<std::shared_ptr<Feature>> feats_marg = database->features_containing(margtime);
     num_margfeats += feats_marg.size();
+    num_margfeats_total += feats_marg.size();
     // Delete theses feature pointers
     for (size_t i = 0; i < feats_marg.size(); i++) {
       feats_marg[i]->to_delete = true;
@@ -467,12 +482,6 @@ void handle_stereo(double time0, double time1, cv::Mat img0, cv::Mat img1) {
     double mpf = (double)num_margfeats / frames;
     // DEBUG PRINT OUT
     PRINT_DEBUG("fps = %.2f | lost_feats/frame = %.2f | track_length/lost_feat = %.2f | marg_tracks/frame = %.2f\n", fps, lpf, fpf, mpf);
-
-    time_total += dt;
-    num_margfeats_total += num_margfeats;
-    featslengths_total += featslengths;
-    num_lostfeats_total += num_lostfeats;
-    frames_total += frames;    
 
     // Reset variables
     frames = 0;
