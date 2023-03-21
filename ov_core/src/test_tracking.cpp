@@ -162,6 +162,8 @@ int main(int argc, char **argv) {
   fp1.close();
   std::ofstream fp2(save_folder_path + GyroAidedTracker::TIME_COST_FILE_NAME, ofstream::out);
   fp2.close();
+  std::ofstream fp3(save_folder_path + "angVel.txt", ofstream::out);
+  fp3.close();
 
   //===================================================================================
   //===================================================================================

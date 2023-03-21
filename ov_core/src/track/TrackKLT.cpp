@@ -222,6 +222,15 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vect
                       GyroAidedTracker::PIXEL_AWARE_PREDICTION,
                       save_folder_path, half_patch_size);
 
+    // gyroPredictMatcher.IntegrateGyroMeasurements();
+    // gyroPredictMatcher.GyroPredictFeatures();
+
+    // for (size_t i = 0; i < gyroPredictMatcher.mvPtGyroPredictUn.size(); i++) {
+    //   pts_left_new.at(i).pt = gyroPredictMatcher.mvPtGyroPredictUn.at(i);
+    // }
+
+    // perform_matching(img_pyramid_last[cam_id], imgpyr, pts_left_old, pts_left_new, cam_id, cam_id, mask_ll);
+
     gyroPredictMatcher.TrackFeatures();
     gyroPredictMatcher.GeometryValidation();
     mask_ll = gyroPredictMatcher.mvStatus;

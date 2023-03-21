@@ -78,7 +78,8 @@ filepath_gt: "/tmp/ov_groundtruth.txt"
 # bag_path: "/home/gustav/catkin_ws_ov/data/V1_03_difficult_short.bag"
 # bag_path: "/home/gustav/catkin_ws_ov/data/V1_01_easy_short.bag"
 # bag_path: "/home/gustav/catkin_ws_ov/data/V1_03_difficult.bag"
-bag_path: "/home/gustav/catkin_ws_ov/data/V2_03_difficult.bag"
+# bag_path: "/home/gustav/catkin_ws_ov/data/V2_03_difficult.bag"
+bag_path: "/home/gustav/catkin_ws_ov/data/V2_03_difficult_short.bag"
 
 use_gyro_aided_tracker: false
 use_mask: false # masks for our images
