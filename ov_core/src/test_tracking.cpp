@@ -308,9 +308,9 @@ int main(int argc, char **argv) {
       // Save to our temp variable
       has_left = true;
       // cv::equalizeHist(cv_ptr->image, img0);
-      // img0 = cv_ptr->image.clone();
 
-      cv::remap(cv_ptr->image, img0, pCameraParams.M1, pCameraParams.M2, cv::INTER_LINEAR);
+      img0 = cv_ptr->image.clone();
+      // cv::remap(cv_ptr->image, img0, pCameraParams.M1, pCameraParams.M2, cv::INTER_LINEAR);
 
       time0 = cv_ptr->header.stamp.toSec();
       img_time_prev = img_time_curr;
@@ -347,16 +347,16 @@ int main(int argc, char **argv) {
   }
 
   // Done!
-  PRINT_DEBUG("average fps = %.2f\n", (double) frames_total/ time_total); 
-  PRINT_DEBUG("frames total = %d\n", frames_total); 
-  PRINT_DEBUG("ref keys total = %d\n", ref_num_keys_total); 
-  PRINT_DEBUG("good tracks total = %d\n", num_good_tracks_total); 
-  PRINT_DEBUG("average num_ref_keys = %.2f\n", (double) ref_num_keys_total / frames_total);
-  PRINT_DEBUG("average num_new_tracks = %.2f\n", (double) num_new_tracks_total / frames_total);
-  PRINT_DEBUG("average lost_feats/frame = %.2f\n", (double)num_lostfeats_total / frames_total);
-  PRINT_DEBUG("average track_length/lost_feat = %.2f\n", (double) featslengths_total / num_lostfeats_total);
-  PRINT_DEBUG("average marg_tracks/frame = %.2f\n", (double)num_margfeats_total / frames_total);
-  PRINT_DEBUG("average good_tracks/num_ref_keys = %.4f\n", (double)num_good_tracks_total / ref_num_keys_total);
+  printf("average fps = %.2f\n", (double) frames_total/ time_total);
+  printf("frames total = %d\n", frames_total);
+  printf("ref keys total = %d\n", ref_num_keys_total);
+  printf("good tracks total = %d\n", num_good_tracks_total);
+  printf("average num_ref_keys = %.2f\n", (double) ref_num_keys_total / frames_total);
+  printf("average num_new_tracks = %.2f\n", (double) num_new_tracks_total / frames_total);
+  printf("average lost_feats/frame = %.2f\n", (double)num_lostfeats_total / frames_total);
+  printf("average track_length/lost_feat = %.2f\n", (double) featslengths_total / num_lostfeats_total);
+  printf("average marg_tracks/frame = %.2f\n", (double)num_margfeats_total / frames_total);
+  printf("average good_tracks/num_ref_keys = %.4f\n", (double)num_good_tracks_total / ref_num_keys_total);
   return EXIT_SUCCESS;
 }
 
