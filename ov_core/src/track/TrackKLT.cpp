@@ -32,8 +32,6 @@
 #include "gyro_aided_tracker.h"
 #include "frame.h"
 
-#define USE_GYRO_AIDED_TRACKER 1
-
 using namespace ov_core;
 
 void TrackKLT::feed_new_camera(const CameraData &message) {};
@@ -143,97 +141,96 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vect
   std::vector<uchar> mask_ll;
   std::vector<cv::KeyPoint> pts_left_new = pts_left_old;
 
-#if !USE_GYRO_AIDED_TRACKER
-  // Lets track temporally
-  perform_matching(img_pyramid_last[cam_id], imgpyr, pts_left_old, pts_left_new, cam_id, cam_id, mask_ll);
+  extern bool use_gyro_aided_tracker;
+  if (!use_gyro_aided_tracker){
 
-#else
+    // Lets track temporally
+    perform_matching(img_pyramid_last[cam_id], imgpyr, pts_left_old, pts_left_new, cam_id, cam_id, mask_ll);
 
-  /// Pixel-Aware Gyro-Aided KLT Feature Tracking
-  cv::Point3f biasg(0,0,0);
-  IMU::Calib imuCalib;
-
-  // FIXME(gustav): this is taken straight from the euroc imucam_chain.yaml
-  float Tbc_data[16] =   {0.0148655429818, -0.999880929698, 0.00414029679422, -0.0216401454975,
-     0.999557249008, 0.0149672133247, 0.025715529948, -0.064676986768,
-    -0.0257744366974, 0.00375618835797, 0.999660727178, 0.00981073058949,
-     0.0, 0.0, 0.0, 1.0};
-  imuCalib.Tbc = cv::Mat(4, 4, CV_32F, Tbc_data);
-
-  std::vector<IMU::Point> vImuFromLastFrame(imu_data.size());
-  // auto it = imu_data.begin();
-  // for (auto &it : imu_data)
-  for (size_t i = 0; i < imu_data.size(); i++)
-  {
-    auto &it = imu_data[i];
-    IMU::Point &imu = vImuFromLastFrame[i];
-    imu.t   = it.timestamp;
-    imu.a.x = it.am.x();
-    imu.a.y = it.am.y();
-    imu.a.z = it.am.z();
-    imu.w.x = it.wm.x();
-    imu.w.y = it.wm.y();
-    imu.w.z = it.wm.z();
   }
+  else {
+    /// Pixel-Aware Gyro-Aided KLT Feature Tracking
+    cv::Point3f biasg(0,0,0);
+    IMU::Calib imuCalib;
 
-  auto K = camera_calib.at(cam_id)->get_K();
-  auto D = camera_calib.at(cam_id)->get_D();
-  auto K_mat_double = cv::Mat(3,3,CV_64F, K.val);
-  auto D_mat_double = cv::Mat(4,1,CV_64F, D.val);
-  cv::Mat K_mat;
-  cv::Mat D_mat;
-  K_mat_double.convertTo(K_mat, CV_32F);
-  D_mat_double.convertTo(D_mat, CV_32F);
-  
-  // Convert keypoints into points (stupid opencv stuff)
-  std::vector<cv::Point2f> pts0, pts1;
-  for (size_t i = 0; i < pts_left_old.size(); i++) {
-    pts0.push_back(pts_left_old.at(i).pt);
-    pts1.push_back(pts_left_new.at(i).pt);
+    // FIXME(gustav): this is taken straight from the euroc imucam_chain.yaml
+    float Tbc_data[16] =   {0.0148655429818, -0.999880929698, 0.00414029679422, -0.0216401454975,
+      0.999557249008, 0.0149672133247, 0.025715529948, -0.064676986768,
+      -0.0257744366974, 0.00375618835797, 0.999660727178, 0.00981073058949,
+      0.0, 0.0, 0.0, 1.0};
+    imuCalib.Tbc = cv::Mat(4, 4, CV_32F, Tbc_data);
+
+    std::vector<IMU::Point> vImuFromLastFrame(imu_data.size());
+    // auto it = imu_data.begin();
+    // for (auto &it : imu_data)
+    for (size_t i = 0; i < imu_data.size(); i++)
+    {
+      auto &it = imu_data[i];
+      IMU::Point &imu = vImuFromLastFrame[i];
+      imu.t   = it.timestamp;
+      imu.a.x = it.am.x();
+      imu.a.y = it.am.y();
+      imu.a.z = it.am.z();
+      imu.w.x = it.wm.x();
+      imu.w.y = it.wm.y();
+      imu.w.z = it.wm.z();
+    }
+
+    auto K = camera_calib.at(cam_id)->get_K();
+    auto D = camera_calib.at(cam_id)->get_D();
+    auto K_mat_double = cv::Mat(3,3,CV_64F, K.val);
+    auto D_mat_double = cv::Mat(4,1,CV_64F, D.val);
+    cv::Mat K_mat;
+    cv::Mat D_mat;
+    K_mat_double.convertTo(K_mat, CV_32F);
+    D_mat_double.convertTo(D_mat, CV_32F);
+    
+    // Convert keypoints into points (stupid opencv stuff)
+    std::vector<cv::Point2f> pts0;
+    for (size_t i = 0; i < pts_left_old.size(); i++) {
+      pts0.push_back(pts_left_old.at(i).pt);
+    }
+
+    extern CameraParams pCameraParams; // defined in test_tracking.cpp
+
+    std::vector<cv::Point2f> pts0_un;
+    UndistortVecPoints(pts0, pts0_un, pCameraParams.mK, pCameraParams.mDistCoef);
+
+    std::vector<cv::KeyPoint> pts_left_old_un;
+    for (size_t i = 0; i < pts_left_old.size(); i++) {
+      // Size of keypoint is seemingly not used for anything
+      pts_left_old_un.push_back(cv::KeyPoint(pts0_un.at(i), 0));
+    }
+
+    extern int half_patch_size;
+    extern std::string save_folder_path;
+
+    cv::Mat &img_ref = img_last[cam_id];
+    cv::Mat &img_cur = img;
+    // cv::Mat img_ref;
+    // cv::Mat img_cur;
+    // cv::remap(img_last[cam_id], img_ref, pCameraParams.M1, pCameraParams.M2, cv::INTER_LINEAR);
+    // cv::remap(img, img_cur, pCameraParams.M1, pCameraParams.M2, cv::INTER_LINEAR);
+
+    GyroAidedTracker gyroPredictMatcher(message.timestamp, timestamp_last[cam_id], img_ref, img_cur,
+                      pts_left_old,
+                      vImuFromLastFrame, imuCalib, biasg,
+                      pCameraParams.mK, pCameraParams.mDistCoef, cv::Mat(),
+                      // GyroAidedTracker::IMAGE_ONLY_OPTICAL_FLOW_CONSIDER_ILLUMINATION,
+                      // GyroAidedTracker::OPENCV_OPTICAL_FLOW_PYR_LK,
+                      GyroAidedTracker::GYRO_PREDICT_WITH_OPTICAL_FLOW_REFINED_CONSIDER_ILLUMINATION_DEFORMATION,
+                      GyroAidedTracker::PIXEL_AWARE_PREDICTION,
+                      save_folder_path, half_patch_size);
+
+    gyroPredictMatcher.TrackFeatures();
+    gyroPredictMatcher.GeometryValidation();
+    mask_ll = gyroPredictMatcher.mvStatus;
+    
+    for (size_t i = 0; i < gyroPredictMatcher.mvPtPredictUn.size(); i++) {
+      pts_left_new.at(i).pt = gyroPredictMatcher.mvPtPredictUn.at(i);
+    }
+
   }
-
-  extern CameraParams pCameraParams; // defined in test_tracking.cpp
-
-  std::vector<cv::Point2f> pts0_un, pts1_un;
-  UndistortVecPoints(pts0, pts0_un, pCameraParams.mK, pCameraParams.mDistCoef);
-  UndistortVecPoints(pts1, pts1_un, pCameraParams.mK, pCameraParams.mDistCoef);
-
-  std::vector<cv::KeyPoint> pts_left_old_un, pts_left_new_un;
-  for (size_t i = 0; i < pts_left_old.size(); i++) {
-    // Size of keypoint is seemingly not used for anything
-    pts_left_old_un.push_back(cv::KeyPoint(pts0_un.at(i), 0));
-    pts_left_new_un.push_back(cv::KeyPoint(pts1_un.at(i), 0));
-  }
-
-  extern int half_patch_size;
-  extern std::string save_folder_path;
-
-  cv::Mat &img_ref = img_last[cam_id];
-  cv::Mat &img_cur = img;
-  // cv::Mat img_ref;
-  // cv::Mat img_cur;
-  // cv::remap(img_last[cam_id], img_ref, pCameraParams.M1, pCameraParams.M2, cv::INTER_LINEAR);
-  // cv::remap(img, img_cur, pCameraParams.M1, pCameraParams.M2, cv::INTER_LINEAR);
-
-  GyroAidedTracker gyroPredictMatcher(message.timestamp, timestamp_last[cam_id], img_ref, img_cur,
-                    pts_left_old,
-                    vImuFromLastFrame, imuCalib, biasg,
-                    pCameraParams.mK, pCameraParams.mDistCoef, cv::Mat(),
-                    // GyroAidedTracker::IMAGE_ONLY_OPTICAL_FLOW_CONSIDER_ILLUMINATION,
-                    // GyroAidedTracker::OPENCV_OPTICAL_FLOW_PYR_LK,
-                    GyroAidedTracker::GYRO_PREDICT_WITH_OPTICAL_FLOW_REFINED_CONSIDER_ILLUMINATION_DEFORMATION,
-                    GyroAidedTracker::PIXEL_AWARE_PREDICTION,
-                    save_folder_path, half_patch_size);
-
-  gyroPredictMatcher.TrackFeatures();
-  gyroPredictMatcher.GeometryValidation();
-  mask_ll = gyroPredictMatcher.mvStatus;
-  
-  for (size_t i = 0; i < gyroPredictMatcher.mvPtPredictUn.size(); i++) {
-    pts_left_new.at(i).pt = gyroPredictMatcher.mvPtPredictUn.at(i);
-  }
-
-#endif
 
   assert(pts_left_new.size() == ids_left_old.size());
   rT4 = boost::posix_time::microsec_clock::local_time();

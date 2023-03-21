@@ -48,9 +48,7 @@
 
 using namespace ov_core;
 
-// #define BAG_PATH "/home/gustav/catkin_ws_ov/data/V1_01_easy_short.bag"
-#define BAG_PATH "/home/gustav/catkin_ws_ov/data/V1_03_difficult_short.bag"
-// #define BAG_PATH "/home/gustav/catkin_ws_ov/data/V1_03_difficult.bag"
+#define CONFIG_PATH "/home/gustav/catkin_ws_ov/src/open_vins/config/euroc_mav/estimator_config.yaml"
 
 // Our feature extractor
 TrackBase *extractor;
@@ -108,13 +106,17 @@ namespace ov_core {
   size_t num_new_keys = 0;
   size_t num_good_tracks = 0;
   CameraParams pCameraParams("cam_type", fx, fy, cx, cy, k1, k2, p1, p2, k3, width, height, fps);
+
+  bool use_gyro_aided_tracker = false;
 }
+bool use_mask = false;
+bool rectify_image = false;
 
 // Main function
 int main(int argc, char **argv) {
 
   // Ensure we have a path, if the user passes it then we should use it
-  std::string config_path = "unset_path.txt";
+  std::string config_path = CONFIG_PATH;
   if (argc > 1) {
     config_path = argv[1];
   }
@@ -127,6 +129,9 @@ int main(int argc, char **argv) {
   // Load parameters
   auto parser = std::make_shared<ov_core::YamlParser>(config_path, false);
   parser->set_node_handler(nh);
+
+  std::string bag_path;
+  parser->parse_config("bag_path", bag_path, true);
 
   // Verbosity
   std::string verbosity = "DEBUG";
@@ -142,7 +147,7 @@ int main(int argc, char **argv) {
 
   // Location of the ROS bag we want to read in
   std::string path_to_bag;
-  nh->param<std::string>("path_bag", path_to_bag, BAG_PATH);
+  nh->param<std::string>("path_bag", path_to_bag, bag_path);
   // nh->param<std::string>("path_bag", path_to_bag, "/home/patrick/datasets/open_vins/aruco_room_01.bag");
   PRINT_INFO("ros bag path is: %s\n", path_to_bag.c_str());
 
@@ -187,6 +192,10 @@ int main(int argc, char **argv) {
   parser->parse_config("knn_ratio", knn_ratio, false);
   parser->parse_config("do_downsizing", do_downsizing, false);
   parser->parse_config("use_stereo", use_stereo, false);
+  parser->parse_config("use_gyro_aided_tracker", ov_core::use_gyro_aided_tracker, true);
+  parser->parse_config("use_mask", use_mask, true);
+  parser->parse_config("rectify_image", rectify_image, true);
+  parser->parse_config("half_patch_size", ov_core::half_patch_size, true);
 
   // Histogram method
   ov_core::TrackBase::HistogramMethod method;
@@ -308,8 +317,12 @@ int main(int argc, char **argv) {
       // Save to our temp variable
       has_left = true;
       cv::equalizeHist(cv_ptr->image, img0);
-      // cv::remap(cv_ptr->image, img0, pCameraParams.M1, pCameraParams.M2, cv::INTER_LINEAR);
-      // img0 = cv_ptr->image.clone();
+      if (rectify_image){
+        cv::remap(cv_ptr->image, img0, pCameraParams.M1, pCameraParams.M2, cv::INTER_LINEAR);
+      }
+      else {
+        img0 = cv_ptr->image.clone();
+      }
       time0 = cv_ptr->header.stamp.toSec();
       img_time_prev = img_time_curr;
       img_time_curr = time0;
@@ -370,20 +383,22 @@ void handle_stereo(double time0, double time1, cv::Mat img0, cv::Mat img1) {
   // Animate our dynamic mask moving
   // Very simple ball bounding around the screen example
   cv::Mat mask = cv::Mat::zeros(cv::Size(img0.cols, img0.rows), CV_8UC1);
-  static cv::Point2f ball_center;
-  static cv::Point2f ball_velocity;
-  if (ball_velocity.x == 0 || ball_velocity.y == 0) {
-    ball_center.x = (float)img0.cols / 2.0f;
-    ball_center.y = (float)img0.rows / 2.0f;
-    ball_velocity.x = 2.5;
-    ball_velocity.y = 2.5;
+  if (use_mask){
+    static cv::Point2f ball_center;
+    static cv::Point2f ball_velocity;
+    if (ball_velocity.x == 0 || ball_velocity.y == 0) {
+      ball_center.x = (float)img0.cols / 2.0f;
+      ball_center.y = (float)img0.rows / 2.0f;
+      ball_velocity.x = 2.5;
+      ball_velocity.y = 2.5;
+    }
+    ball_center += ball_velocity;
+    if (ball_center.x < 0 || (int)ball_center.x > img0.cols)
+      ball_velocity.x *= -1;
+    if (ball_center.y < 0 || (int)ball_center.y > img0.rows)
+      ball_velocity.y *= -1;
+    cv::circle(mask, ball_center, 100, cv::Scalar(255), cv::FILLED);
   }
-  ball_center += ball_velocity;
-  if (ball_center.x < 0 || (int)ball_center.x > img0.cols)
-    ball_velocity.x *= -1;
-  if (ball_center.y < 0 || (int)ball_center.y > img0.rows)
-    ball_velocity.y *= -1;
-  cv::circle(mask, ball_center, 100, cv::Scalar(255), cv::FILLED);
 
   // Process this new image
   ov_core::CameraData message;
