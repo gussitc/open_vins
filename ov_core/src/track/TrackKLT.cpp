@@ -186,28 +186,37 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vect
   D_mat_double.convertTo(D_mat, CV_32F);
   
   // Convert keypoints into points (stupid opencv stuff)
-  std::vector<cv::Point2f> corners_un, pts1_un;
+  std::vector<cv::Point2f> pts0, pts1;
   for (size_t i = 0; i < pts_left_old.size(); i++) {
-    corners_un.push_back(pts_left_old.at(i).pt);
-    pts1_un.push_back(pts_left_new.at(i).pt);
+    pts0.push_back(pts_left_old.at(i).pt);
+    pts1.push_back(pts_left_new.at(i).pt);
   }
 
   extern CameraParams pCameraParams; // defined in test_tracking.cpp
 
-  // Distort points
-  std::vector<cv::Point2f> corners_dist;
-  std::vector<cv::KeyPoint> pts_left_old_dist;
-  DistortVecPoints(corners_un, corners_dist, pCameraParams.mK, pCameraParams.mDistCoef);
-  for(size_t i = 0, iend = corners_dist.size(); i < iend; i++){
-    pts_left_old_dist.push_back(cv::KeyPoint(corners_dist[i], 0));
+  std::vector<cv::Point2f> pts0_un, pts1_un;
+  UndistortVecPoints(pts0, pts0_un, pCameraParams.mK, pCameraParams.mDistCoef);
+  UndistortVecPoints(pts1, pts1_un, pCameraParams.mK, pCameraParams.mDistCoef);
+
+  std::vector<cv::KeyPoint> pts_left_old_un, pts_left_new_un;
+  for (size_t i = 0; i < pts_left_old.size(); i++) {
+    // Size of keypoint is seemingly not used for anything
+    pts_left_old_un.push_back(cv::KeyPoint(pts0_un.at(i), 0));
+    pts_left_new_un.push_back(cv::KeyPoint(pts1_un.at(i), 0));
   }
 
   extern int half_patch_size;
   extern std::string save_folder_path;
 
-  GyroAidedTracker gyroPredictMatcher(message.timestamp, timestamp_last[cam_id], img_last[cam_id], img,
-                    pts_left_old_dist, std::vector<cv::KeyPoint>(),
-                    pts_left_old, std::vector<cv::KeyPoint>(),
+  cv::Mat &img_ref = img_last[cam_id];
+  cv::Mat &img_cur = img;
+  // cv::Mat img_ref;
+  // cv::Mat img_cur;
+  // cv::remap(img_last[cam_id], img_ref, pCameraParams.M1, pCameraParams.M2, cv::INTER_LINEAR);
+  // cv::remap(img, img_cur, pCameraParams.M1, pCameraParams.M2, cv::INTER_LINEAR);
+
+  GyroAidedTracker gyroPredictMatcher(message.timestamp, timestamp_last[cam_id], img_ref, img_cur,
+                    pts_left_old,
                     vImuFromLastFrame, imuCalib, biasg,
                     pCameraParams.mK, pCameraParams.mDistCoef, cv::Mat(),
                     // GyroAidedTracker::IMAGE_ONLY_OPTICAL_FLOW_CONSIDER_ILLUMINATION,
@@ -217,12 +226,9 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vect
                     save_folder_path, half_patch_size);
 
   gyroPredictMatcher.TrackFeatures();
-  // setFrameWithoutGeometryValid(curFrame, gyroPredictMatcher); // save temporal states
   gyroPredictMatcher.GeometryValidation();
   mask_ll = gyroPredictMatcher.mvStatus;
   
-  // TODO(gustav): this should be the distorted points, but it seems like distortion is not working
-  // maybe images should be just be undistorted to begin with
   for (size_t i = 0; i < gyroPredictMatcher.mvPtPredictUn.size(); i++) {
     pts_left_new.at(i).pt = gyroPredictMatcher.mvPtPredictUn.at(i);
   }

@@ -354,6 +354,11 @@ int main(int argc, char **argv) {
   printf("average track_length/lost_feat = %.2f\n", (double) featslengths_total / num_lostfeats_total);
   printf("average marg_tracks/frame = %.2f\n", (double)num_margfeats_total / frames_total);
   printf("average good_tracks/num_ref_keys = %.4f\n", (double)num_good_tracks_total / ref_num_keys_total);
+  printf("| desc | %.2f | %.2f | %.2f | %.2f |\n", 
+    (double)num_lostfeats_total / frames_total,
+    (double)featslengths_total / num_lostfeats_total,
+    (double)num_margfeats_total / frames_total,
+    (double)num_good_tracks_total / ref_num_keys_total);
   return EXIT_SUCCESS;
 }
 
