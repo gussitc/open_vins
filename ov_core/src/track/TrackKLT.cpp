@@ -32,7 +32,7 @@
 #include "gyro_aided_tracker.h"
 #include "frame.h"
 
-#define USE_GYRO_AIDED_TRACKER 0
+#define USE_GYRO_AIDED_TRACKER 1
 
 using namespace ov_core;
 
@@ -160,13 +160,6 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vect
      0.0, 0.0, 0.0, 1.0};
   imuCalib.Tbc = cv::Mat(4, 4, CV_32F, Tbc_data);
 
-  // double last_timestamp = timestamp_last[cam_id];
-  // assert(imu_data.begin()->timestamp != imu_data.end()->timestamp);
-  // imu_data.erase(std::remove_if(imu_data.begin(), imu_data.end(),
-  //   [last_timestamp](ov_core::ImuData &imu){ return imu.timestamp < last_timestamp; }), imu_data.end());
-
-  // assert(imu_data.begin()->timestamp != imu_data.end()->timestamp);
-
   std::vector<IMU::Point> vImuFromLastFrame(imu_data.size());
   // auto it = imu_data.begin();
   // for (auto &it : imu_data)
@@ -209,31 +202,6 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vect
     pts_left_old_dist.push_back(cv::KeyPoint(corners_dist[i], 0));
   }
 
-  // This is taken from perform_matching as geometric validation requires undistorted points
-  // Normalize these points, so we can then do ransac
-  // We don't want to do ransac on distorted image uvs since the mapping is nonlinear
-  // std::vector<cv::Point2f> pts0_dist, pts1_dist;
-  // for (size_t i = 0; i < corners_un.size(); i++) {
-  //   pts0_dist.push_back(camera_calib.at(cam_id)->distort_cv(corners_un.at(i)));
-  //   pts1_dist.push_back(camera_calib.at(cam_id)->distort_cv(pts1_un.at(i)));
-  // }
-
-  // Convert points back to keypoints for use in gyroPredictMatcher (stupid opencv stuff)
-  // std::vector<cv::KeyPoint> kpts0_dist, kpts1_dist;
-  // for (size_t i = 0; i < corners_un.size(); i++) {
-  //   // Size of keypoint is seemingly not used for anything
-  //   kpts0_dist.push_back(cv::KeyPoint(pts0_dist.at(i), 0));
-  //   kpts1_dist.push_back(cv::KeyPoint(pts1_dist.at(i), 0));
-  // }
-
-  // Using `OPENCV_OPTICAL_FLOW_PYR_LK` as the predict method should give similar performance to OpenVINS
-  // GyroAidedTracker gyroPredictMatcher(double t, double t_ref, const cv::Mat &imgGrayRef_, const cv::Mat &imgGrayCur_,
-  //                   const std::vector<cv::KeyPoint> &vKeysRef_, const std::vector<cv::KeyPoint> &vKeysCur_,
-  //                   const std::vector<cv::KeyPoint> &vKeysUnRef_, const std::vector<cv::KeyPoint> &vKeysUnCur_,
-  //                   const std::vector<IMU::Point> &vImuFromLastFrame, const cv::Point3f &bias_,
-  //                   cv::Mat K_, cv::Mat DistCoef_, const cv::Mat &normalizeTable_,
-  //                   GyroAidedTracker::eType predictMethod_ = GyroAidedTracker::OPENCV_OPTICAL_FLOW_PYR_LK);
-
   extern int half_patch_size;
   extern std::string save_folder_path;
 
@@ -250,7 +218,7 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vect
 
   gyroPredictMatcher.TrackFeatures();
   // setFrameWithoutGeometryValid(curFrame, gyroPredictMatcher); // save temporal states
-  int num_inliers = gyroPredictMatcher.GeometryValidation();
+  gyroPredictMatcher.GeometryValidation();
   mask_ll = gyroPredictMatcher.mvStatus;
   
   // TODO(gustav): this should be the distorted points, but it seems like distortion is not working
@@ -307,7 +275,6 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vect
 
   // Update our feature database, with theses new observations
   for (size_t i = 0; i < good_left.size(); i++) {
-    // FIXME(gustav): it is not correct to undistort here
     cv::Point2f npt_l = camera_calib.at(cam_id)->undistort_cv(good_left.at(i).pt);
     database->update_feature(good_ids_left.at(i), message.timestamp, cam_id, good_left.at(i).pt.x, good_left.at(i).pt.y, npt_l.x, npt_l.y);
   }
@@ -600,8 +567,7 @@ void TrackKLT::perform_detection_monocular(const std::vector<cv::Mat> &img0pyr, 
 
   // First compute how many more features we need to extract from this image
   // If we don't need any features, just return
-  // double min_feat_percent = 0.50;
-  double min_feat_percent = 1.0;
+  double min_feat_percent = 0.50;
   int num_featsneeded = num_features - (int)pts0.size();
   if (num_featsneeded < std::min(20, (int)(min_feat_percent * num_features)))
     return;

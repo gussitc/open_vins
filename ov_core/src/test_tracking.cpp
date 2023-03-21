@@ -50,6 +50,7 @@ using namespace ov_core;
 
 // #define BAG_PATH "/home/gustav/catkin_ws_ov/data/V1_01_easy_short.bag"
 #define BAG_PATH "/home/gustav/catkin_ws_ov/data/V1_03_difficult_short.bag"
+// #define BAG_PATH "/home/gustav/catkin_ws_ov/data/V1_03_difficult.bag"
 
 // Our feature extractor
 TrackBase *extractor;
@@ -63,6 +64,7 @@ int featslengths = 0;
 int clone_states = 10;
 std::deque<double> clonetimes;
 ros::Time time_start;
+ros::Time time_beginning;
 
 int num_lostfeats_total = 0;
 int featslengths_total = 0;
@@ -71,7 +73,6 @@ int ref_num_keys_total = 0;
 int num_new_tracks_total = 0;
 int num_good_tracks_total = 0;
 int frames_total = 0;
-double time_total = 0;
 
 // How many cameras we will do visual tracking on (mono=1, stereo=2)
 int max_cameras = 1;
@@ -216,13 +217,12 @@ int main(int argc, char **argv) {
   PRINT_DEBUG("downsize aruco image: %d\n", do_downsizing);
   PRINT_DEBUG("stereo tracking: %d\n", use_stereo);
 
-
   // Fake camera info (we don't need this, as we are not using the normalized coordinates for anything)
   std::unordered_map<size_t, std::shared_ptr<CamBase>> cameras;
   for (int i = 0; i < 2; i++) {
     Eigen::Matrix<double, 8, 1> cam0_calib;
-    // cam0_calib << 1, 1, 0, 0, 0, 0, 0, 0;
-    cam0_calib << fx, fy, cx, cy, k1, k2, p1, p2;
+    cam0_calib << 1, 1, 0, 0, 0, 0, 0, 0;
+    // cam0_calib << fx, fy, cx, cy, k1, k2, p1, p2;
     std::shared_ptr<CamBase> camera_calib = std::make_shared<CamRadtan>(width, height);
     camera_calib->set_value(cam0_calib);
     cameras.insert({i, camera_calib});
@@ -265,11 +265,11 @@ int main(int argc, char **argv) {
   }
 
   // Record the start time for our FPS counter
-  time_start = ros::Time::now();
+  time_start = time_beginning = ros::Time::now();
 
   // Our stereo pair we have
   bool has_left = false;
-  // bool has_right = false;
+  bool has_right = false;
   cv::Mat img0, img1;
   double time0 = time_init.toSec();
   double time1 = time_init.toSec();
@@ -307,47 +307,44 @@ int main(int argc, char **argv) {
       }
       // Save to our temp variable
       has_left = true;
-      // cv::equalizeHist(cv_ptr->image, img0);
-
-      img0 = cv_ptr->image.clone();
+      cv::equalizeHist(cv_ptr->image, img0);
       // cv::remap(cv_ptr->image, img0, pCameraParams.M1, pCameraParams.M2, cv::INTER_LINEAR);
-
+      // img0 = cv_ptr->image.clone();
       time0 = cv_ptr->header.stamp.toSec();
       img_time_prev = img_time_curr;
       img_time_curr = time0;
     }
 
     //  Handle RIGHT camera
-    // sensor_msgs::Image::ConstPtr s1 = m.instantiate<sensor_msgs::Image>();
-    // if (s1 != nullptr && m.getTopic() == topic_camera1) {
-    //   // Get the image
-    //   cv_bridge::CvImageConstPtr cv_ptr;
-    //   try {
-    //     cv_ptr = cv_bridge::toCvShare(s1, sensor_msgs::image_encodings::MONO8);
-    //   } catch (cv_bridge::Exception &e) {
-    //     PRINT_ERROR(RED "cv_bridge exception: %s\n" RESET, e.what());
-    //     continue;
-    //   }
-    //   // Save to our temp variable
-    //   has_right = true;
-    //   cv::equalizeHist(cv_ptr->image, img1);
-    //   // img1 = cv_ptr->image.clone();
-    //   time1 = cv_ptr->header.stamp.toSec();
-    // }
+    sensor_msgs::Image::ConstPtr s1 = m.instantiate<sensor_msgs::Image>();
+    if (s1 != nullptr && m.getTopic() == topic_camera1) {
+      // Get the image
+      cv_bridge::CvImageConstPtr cv_ptr;
+      try {
+        cv_ptr = cv_bridge::toCvShare(s1, sensor_msgs::image_encodings::MONO8);
+      } catch (cv_bridge::Exception &e) {
+        PRINT_ERROR(RED "cv_bridge exception: %s\n" RESET, e.what());
+        continue;
+      }
+      // Save to our temp variable
+      has_right = true;
+      cv::equalizeHist(cv_ptr->image, img1);
+      // img1 = cv_ptr->image.clone();
+      time1 = cv_ptr->header.stamp.toSec();
+    }
 
     // If we have both left and right, then process
-    // if (has_left && has_right) {
-    if (has_left) {
+    if (has_left && has_right) {
       // process
-      handle_stereo(time0, time1, img0, cv::Mat());
+      handle_stereo(time0, time1, img0, img1);
       // reset bools
       has_left = false;
-      // has_right = false;
+      has_right = false;
     }
   }
 
   // Done!
-  printf("average fps = %.2f\n", (double) frames_total/ time_total);
+  printf("average fps = %.2f\n", (double) frames_total/ (ros::Time::now().toSec() - time_beginning.toSec()));
   printf("frames total = %d\n", frames_total);
   printf("ref keys total = %d\n", ref_num_keys_total);
   printf("good tracks total = %d\n", num_good_tracks_total);
@@ -368,20 +365,20 @@ void handle_stereo(double time0, double time1, cv::Mat img0, cv::Mat img1) {
   // Animate our dynamic mask moving
   // Very simple ball bounding around the screen example
   cv::Mat mask = cv::Mat::zeros(cv::Size(img0.cols, img0.rows), CV_8UC1);
-  // static cv::Point2f ball_center;
-  // static cv::Point2f ball_velocity;
-  // if (ball_velocity.x == 0 || ball_velocity.y == 0) {
-  //   ball_center.x = (float)img0.cols / 2.0f;
-  //   ball_center.y = (float)img0.rows / 2.0f;
-  //   ball_velocity.x = 2.5;
-  //   ball_velocity.y = 2.5;
-  // }
-  // ball_center += ball_velocity;
-  // if (ball_center.x < 0 || (int)ball_center.x > img0.cols)
-  //   ball_velocity.x *= -1;
-  // if (ball_center.y < 0 || (int)ball_center.y > img0.rows)
-  //   ball_velocity.y *= -1;
-  // cv::circle(mask, ball_center, 100, cv::Scalar(255), cv::FILLED);
+  static cv::Point2f ball_center;
+  static cv::Point2f ball_velocity;
+  if (ball_velocity.x == 0 || ball_velocity.y == 0) {
+    ball_center.x = (float)img0.cols / 2.0f;
+    ball_center.y = (float)img0.rows / 2.0f;
+    ball_velocity.x = 2.5;
+    ball_velocity.y = 2.5;
+  }
+  ball_center += ball_velocity;
+  if (ball_center.x < 0 || (int)ball_center.x > img0.cols)
+    ball_velocity.x *= -1;
+  if (ball_center.y < 0 || (int)ball_center.y > img0.rows)
+    ball_velocity.y *= -1;
+  cv::circle(mask, ball_center, 100, cv::Scalar(255), cv::FILLED);
 
   // Process this new image
   ov_core::CameraData message;
@@ -389,11 +386,11 @@ void handle_stereo(double time0, double time1, cv::Mat img0, cv::Mat img1) {
   message.sensor_ids.push_back(0);
   message.images.push_back(img0);
   message.masks.push_back(mask);
-  // if (max_cameras == 2) {
-  //   message.sensor_ids.push_back(1);
-  //   message.images.push_back(img1);
-  //   message.masks.push_back(mask);
-  // }
+  if (max_cameras == 2) {
+    message.sensor_ids.push_back(1);
+    message.images.push_back(img1);
+    message.masks.push_back(mask);
+  }
 
   std::vector<ov_core::ImuData> imu_data;
 
@@ -475,14 +472,12 @@ void handle_stereo(double time0, double time1, cv::Mat img0, cv::Mat img1) {
   // if (time_curr.toSec()-time_start.toSec() > 2) {
   if (frames > 60) {
     // Calculate the FPS
-    double dt  = (time_curr.toSec() - time_start.toSec());
-    double fps = (double)frames / dt;
+    double fps = (double)frames / (time_curr.toSec() - time_start.toSec());
     double lpf = (double)num_lostfeats / frames;
     double fpf = (double)featslengths / num_lostfeats;
     double mpf = (double)num_margfeats / frames;
     // DEBUG PRINT OUT
     PRINT_DEBUG("fps = %.2f | lost_feats/frame = %.2f | track_length/lost_feat = %.2f | marg_tracks/frame = %.2f\n", fps, lpf, fpf, mpf);
-
     // Reset variables
     frames = 0;
     time_start = time_curr;
