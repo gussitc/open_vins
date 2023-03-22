@@ -1,7 +1,11 @@
 import re
 import numpy as np
 import pathlib
+
+import matplotlib
+matplotlib.use('GTK3Agg')
 import matplotlib.pyplot as plt
+import addcopyfighandler
 
 folder_path = pathlib.Path(__file__).parent.resolve().as_posix() + '/output/'
 angvel_file = 'angVel.txt'
@@ -52,7 +56,7 @@ def main():
             angvel_z.append(z)
 
     print('Dataset length: ', timestamps[-1] - timestamps[0])
-    # print('Mean gyro flow: ', np.mean(gyro_flows))
+    print('Mean error flow: ', np.mean(error_flows))
 
     # Create the plot and add lines for x, y, and z
     fig, ax = plt.subplots()
@@ -74,10 +78,10 @@ def main():
     ax.legend()
 
     fig, ax = plt.subplots()
-    plt.hist(match_flows, density=True,
+    plt.hist(error_flows, density=True,
                 bins='auto',
-            #  bins=17,
-            #  histtype = 'step',
+                # bins=25,
+                # histtype = 'step',
                 color='#0504aa',
                 rwidth=0.85,
                 alpha=0.7)

@@ -108,6 +108,7 @@ namespace ov_core {
   CameraParams pCameraParams("cam_type", fx, fy, cx, cy, k1, k2, p1, p2, k3, width, height, fps);
 
   bool use_gyro_aided_tracker = false;
+  bool undistort_keypoints;
 }
 bool use_mask = false;
 bool rectify_image = false;
@@ -189,6 +190,7 @@ int main(int argc, char **argv) {
   bool use_stereo = false;
   int pyr_levels = 5;
   int win_size = 15;
+  int skip_frames = 1;
   parser->parse_config("max_cameras", max_cameras, false);
   parser->parse_config("num_pts", num_pts, false);
   parser->parse_config("num_aruco", num_aruco, false);
@@ -206,6 +208,8 @@ int main(int argc, char **argv) {
   parser->parse_config("half_patch_size", ov_core::half_patch_size, true);
   parser->parse_config("pyr_levels", pyr_levels, true);
   parser->parse_config("win_size", win_size, true);
+  parser->parse_config("undistort_keypoints", undistort_keypoints, true);
+  parser->parse_config("skip_frames", skip_frames, true);
 
   // Histogram method
   ov_core::TrackBase::HistogramMethod method;
@@ -293,6 +297,8 @@ int main(int argc, char **argv) {
   double time0 = time_init.toSec();
   double time1 = time_init.toSec();
 
+  int frame_counter = 0;
+
   // Step through the rosbag
   for (const rosbag::MessageInstance &m : view) {
 
@@ -316,6 +322,8 @@ int main(int argc, char **argv) {
     // Handle LEFT camera
     sensor_msgs::Image::ConstPtr s0 = m.instantiate<sensor_msgs::Image>();
     if (s0 != nullptr && m.getTopic() == topic_camera0) {
+      if (frame_counter++ % skip_frames != 0) continue;
+
       // Get the image
       cv_bridge::CvImageConstPtr cv_ptr;
       try {
@@ -357,7 +365,8 @@ int main(int argc, char **argv) {
     }
 
     // If we have both left and right, then process
-    if (has_left && has_right) {
+    // if (has_left && has_right) {
+    if (has_left) {
       // process
       handle_stereo(time0, time1, img0, img1);
       // reset bools
@@ -377,7 +386,7 @@ int main(int argc, char **argv) {
   printf("average track_length/lost_feat = %.2f\n", (double) featslengths_total / num_lostfeats_total);
   printf("average marg_tracks/frame = %.2f\n", (double)num_margfeats_total / frames_total);
   printf("average good_tracks/num_ref_keys = %.4f\n", (double)num_good_tracks_total / ref_num_keys_total);
-  printf("| desc | %.2f | %.2f | %.2f | %.2f |\n", 
+  printf("%.2f | %.2f | %.2f | %.2f\n", 
     (double)num_lostfeats_total / frames_total,
     (double)featslengths_total / num_lostfeats_total,
     (double)num_margfeats_total / frames_total,
