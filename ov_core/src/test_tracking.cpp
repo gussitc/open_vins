@@ -158,12 +158,16 @@ int main(int argc, char **argv) {
   nh->param<double>("bag_durr", bag_durr, -1);
 
   // clear output files instead of appending
-  std::ofstream fp1(save_folder_path + GyroAidedTracker::TRACK_FEATURES_FILE_NAME, ofstream::out);
-  fp1.close();
-  std::ofstream fp2(save_folder_path + GyroAidedTracker::TIME_COST_FILE_NAME, ofstream::out);
-  fp2.close();
-  std::ofstream fp3(save_folder_path + "angVel.txt", ofstream::out);
-  fp3.close();
+  std::vector<std::string> output_files = {GyroAidedTracker::TRACK_FEATURES_FILE_NAME, 
+                                           GyroAidedTracker::TIME_COST_FILE_NAME,
+                                           "angVel.txt",
+                                           "gyroFlow.txt",
+                                           "matchFlow.txt",
+                                           "errorFlow.txt"};
+  for (auto filename : output_files){
+    std::ofstream fp(save_folder_path + filename, ofstream::out);
+    fp.close();
+  }
 
   //===================================================================================
   //===================================================================================
@@ -183,6 +187,8 @@ int main(int argc, char **argv) {
   double knn_ratio = 0.70;
   bool do_downsizing = false;
   bool use_stereo = false;
+  int pyr_levels = 5;
+  int win_size = 15;
   parser->parse_config("max_cameras", max_cameras, false);
   parser->parse_config("num_pts", num_pts, false);
   parser->parse_config("num_aruco", num_aruco, false);
@@ -198,6 +204,8 @@ int main(int argc, char **argv) {
   parser->parse_config("use_mask", use_mask, true);
   parser->parse_config("rectify_image", rectify_image, true);
   parser->parse_config("half_patch_size", ov_core::half_patch_size, true);
+  parser->parse_config("pyr_levels", pyr_levels, true);
+  parser->parse_config("win_size", win_size, true);
 
   // Histogram method
   ov_core::TrackBase::HistogramMethod method;
@@ -240,7 +248,7 @@ int main(int argc, char **argv) {
   }
 
   // Lets make a feature extractor
-  extractor = new TrackKLT(cameras, num_pts, num_aruco, use_stereo, method, fast_threshold, grid_x, grid_y, min_px_dist);
+  extractor = new TrackKLT(cameras, num_pts, num_aruco, use_stereo, method, fast_threshold, grid_x, grid_y, min_px_dist, pyr_levels, win_size);
   // extractor = new TrackDescriptor(cameras, num_pts, num_aruco, use_stereo, method, fast_threshold, grid_x, grid_y, min_px_dist,
   // knn_ratio);
   // extractor = new TrackAruco(cameras, num_aruco, use_stereo, method, do_downsizing);

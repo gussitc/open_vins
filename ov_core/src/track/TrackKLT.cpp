@@ -222,22 +222,37 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vect
                       GyroAidedTracker::PIXEL_AWARE_PREDICTION,
                       save_folder_path, half_patch_size);
 
-    // gyroPredictMatcher.IntegrateGyroMeasurements();
-    // gyroPredictMatcher.GyroPredictFeatures();
+    gyroPredictMatcher.IntegrateGyroMeasurements();
+    gyroPredictMatcher.GyroPredictFeatures();
 
-    // for (size_t i = 0; i < gyroPredictMatcher.mvPtGyroPredictUn.size(); i++) {
-    //   pts_left_new.at(i).pt = gyroPredictMatcher.mvPtGyroPredictUn.at(i);
-    // }
-
-    // perform_matching(img_pyramid_last[cam_id], imgpyr, pts_left_old, pts_left_new, cam_id, cam_id, mask_ll);
-
-    gyroPredictMatcher.TrackFeatures();
-    gyroPredictMatcher.GeometryValidation();
-    mask_ll = gyroPredictMatcher.mvStatus;
-    
-    for (size_t i = 0; i < gyroPredictMatcher.mvPtPredictUn.size(); i++) {
-      pts_left_new.at(i).pt = gyroPredictMatcher.mvPtPredictUn.at(i);
+    for (size_t i = 0; i < gyroPredictMatcher.mvPtGyroPredictUn.size(); i++) {
+      pts_left_new.at(i).pt = gyroPredictMatcher.mvPtGyroPredictUn.at(i);
     }
+
+    perform_matching(img_pyramid_last[cam_id], imgpyr, pts_left_old, pts_left_new, cam_id, cam_id, mask_ll);
+
+    std::ofstream fp_match(save_folder_path + "matchFlow.txt", ofstream::app);
+    std::ofstream fp_error(save_folder_path + "errorFlow.txt", ofstream::app);
+    fp_match << std::fixed << std::setprecision(3);
+    fp_match << message.timestamp << ": ";
+    fp_error << std::fixed << std::setprecision(3);
+    fp_error << message.timestamp << ": ";
+    for (size_t i = 0; i < pts_left_old.size(); i++)
+    {
+      if (!mask_ll[i]) continue;
+      fp_match << pts_left_new[i].pt - pts_left_old[i].pt << " ";
+      fp_error << pts_left_new[i].pt - gyroPredictMatcher.mvPtGyroPredictUn[i] << " ";
+    }
+    fp_match << std::endl;
+    fp_error << std::endl;
+
+    // gyroPredictMatcher.TrackFeatures();
+    // gyroPredictMatcher.GeometryValidation();
+    // mask_ll = gyroPredictMatcher.mvStatus;
+    
+    // for (size_t i = 0; i < gyroPredictMatcher.mvPtPredictUn.size(); i++) {
+    //   pts_left_new.at(i).pt = gyroPredictMatcher.mvPtPredictUn.at(i);
+    // }
 
   }
 

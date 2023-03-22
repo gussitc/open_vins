@@ -82,10 +82,14 @@ filepath_gt: "/tmp/ov_groundtruth.txt"
 bag_path: "/home/gustav/catkin_ws_ov/data/V2_03_difficult_short.bag"
 
 use_gyro_aided_tracker: false
-use_mask: false # masks for our images
-rectify_image: false
 half_patch_size: 10
 num_pts: 200 # number of points (per camera) we will extract and try to track
+pyr_levels: 8
+win_size: 15
+
+# not really used
+use_mask: false # masks for our images
+rectify_image: false
 
 # our front-end feature tracking parameters
 # we have a KLT and descriptor based (KLT is better implemented...)
