@@ -76,24 +76,28 @@ filepath_gt: "/tmp/ov_groundtruth.txt"
 # ==================================================================
 
 # bag_path: "/home/gustav/catkin_ws_ov/data/V1_03_difficult_short.bag"
-bag_path: "/home/gustav/catkin_ws_ov/data/V1_01_easy_short.bag"
+# bag_path: "/home/gustav/catkin_ws_ov/data/V1_01_easy_short.bag"
+# bag_path: "/home/gustav/catkin_ws_ov/data/V1_01_easy.bag"
+# bag_path: "/home/gustav/catkin_ws_ov/data/V1_01_easy_short_short.bag"
 # bag_path: "/home/gustav/catkin_ws_ov/data/V1_03_difficult.bag"
 # bag_path: "/home/gustav/catkin_ws_ov/data/V2_03_difficult.bag"
-# bag_path: "/home/gustav/catkin_ws_ov/data/V2_03_difficult_short.bag"
+bag_path: "/home/gustav/catkin_ws_ov/data/V2_03_difficult_short.bag"
 
 use_gyro_aided_tracker: true
 half_patch_size: 10
 num_pts: 200 # number of points (per camera) we will extract and try to track
-pyr_levels: 1
+pyr_levels: 3
 win_size: 15
+min_feat_percent: 1.0
+init_with_gyro_pred: false
 
 # not really used
 use_mask: false # masks for our images
-rectify_image: false
+rectify_image: true
 
-undistort_keypoints: false
-# use_undistorted_keypoints: true
-skip_frames: 5
+draw_gyro_predictions: false
+skip_frames: 1
+step_mode: false
 
 # our front-end feature tracking parameters
 # we have a KLT and descriptor based (KLT is better implemented...)

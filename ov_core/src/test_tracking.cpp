@@ -108,7 +108,10 @@ namespace ov_core {
   CameraParams pCameraParams("cam_type", fx, fy, cx, cy, k1, k2, p1, p2, k3, width, height, fps);
 
   bool use_gyro_aided_tracker = false;
-  bool undistort_keypoints;
+  bool draw_gyro_predictions = false;
+  bool init_with_gyro_pred = false;
+  bool step_mode = false;
+  double min_feat_percent = 0.5;
 }
 bool use_mask = false;
 bool rectify_image = false;
@@ -208,8 +211,11 @@ int main(int argc, char **argv) {
   parser->parse_config("half_patch_size", ov_core::half_patch_size, true);
   parser->parse_config("pyr_levels", pyr_levels, true);
   parser->parse_config("win_size", win_size, true);
-  parser->parse_config("undistort_keypoints", undistort_keypoints, true);
+  parser->parse_config("draw_gyro_predictions", draw_gyro_predictions, true);
   parser->parse_config("skip_frames", skip_frames, true);
+  parser->parse_config("init_with_gyro_pred", init_with_gyro_pred, true);
+  parser->parse_config("step_mode", step_mode, true);
+  parser->parse_config("min_feat_percent", min_feat_percent, true);
 
   // Histogram method
   ov_core::TrackBase::HistogramMethod method;
@@ -376,7 +382,8 @@ int main(int argc, char **argv) {
   }
 
   // Done!
-  printf("average fps = %.2f\n", (double) frames_total/ (ros::Time::now().toSec() - time_beginning.toSec()));
+  double average_fps = (double) frames_total/ (ros::Time::now().toSec() - time_beginning.toSec());
+  printf("average fps = %.2f\n", average_fps);
   printf("frames total = %d\n", frames_total);
   printf("ref keys total = %d\n", ref_num_keys_total);
   printf("good tracks total = %d\n", num_good_tracks_total);
@@ -386,11 +393,14 @@ int main(int argc, char **argv) {
   printf("average track_length/lost_feat = %.2f\n", (double) featslengths_total / num_lostfeats_total);
   printf("average marg_tracks/frame = %.2f\n", (double)num_margfeats_total / frames_total);
   printf("average good_tracks/num_ref_keys = %.4f\n", (double)num_good_tracks_total / ref_num_keys_total);
-  printf("%.2f | %.2f | %.2f | %.2f\n", 
+  printf("%d | %d | %.2f | %.2f | %.2f | \n%.4f\n%.4f\n", 
+    ref_num_keys_total,
+    num_good_tracks_total,
     (double)num_lostfeats_total / frames_total,
     (double)featslengths_total / num_lostfeats_total,
     (double)num_margfeats_total / frames_total,
-    (double)num_good_tracks_total / ref_num_keys_total);
+    (double)num_good_tracks_total / ref_num_keys_total,
+    average_fps);
   return EXIT_SUCCESS;
 }
 

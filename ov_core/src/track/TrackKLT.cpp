@@ -194,31 +194,10 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vect
     extern CameraParams pCameraParams; // defined in test_tracking.cpp
     extern int half_patch_size;
     extern std::string save_folder_path;
-    extern bool undistort_keypoints;
+    extern bool draw_gyro_predictions;
 
-    std::vector<cv::Point2f> pts0_un;
-    UndistortVecPoints(pts0, pts0_un, pCameraParams.mK, pCameraParams.mDistCoef);
-
-    std::vector<cv::KeyPoint> pts_left_old_un;
-    for (size_t i = 0; i < pts_left_old.size(); i++) {
-      // Size of keypoint is seemingly not used for anything
-      pts_left_old_un.push_back(cv::KeyPoint(pts0_un.at(i), 0));
-    }
-
-    cv::Mat &img_ref = img_last[cam_id];
-    cv::Mat &img_cur = img;
-    // cv::Mat img_ref;
-    // cv::Mat img_cur;
-    // cv::remap(img_last[cam_id], img_ref, pCameraParams.M1, pCameraParams.M2, cv::INTER_LINEAR);
-    // cv::remap(img, img_cur, pCameraParams.M1, pCameraParams.M2, cv::INTER_LINEAR);
-
-    auto key_pts = pts_left_old;
-    if (undistort_keypoints){
-      key_pts = pts_left_old_un;
-    }
-
-    GyroAidedTracker gyroPredictMatcher(message.timestamp, timestamp_last[cam_id], img_ref, img_cur,
-                      key_pts,
+    GyroAidedTracker gyroPredictMatcher(message.timestamp, timestamp_last[cam_id], img_last[cam_id], img,
+                      pts_left_old,
                       vImuFromLastFrame, imuCalib, biasg,
                       pCameraParams.mK, pCameraParams.mDistCoef, cv::Mat(),
                       // GyroAidedTracker::IMAGE_ONLY_OPTICAL_FLOW_CONSIDER_ILLUMINATION,
@@ -227,81 +206,52 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vect
                       GyroAidedTracker::PIXEL_AWARE_PREDICTION,
                       save_folder_path, half_patch_size);
 
-    gyroPredictMatcher.IntegrateGyroMeasurements();
-    gyroPredictMatcher.GyroPredictFeatures();
+    gyroPredictMatcher.TrackFeatures();
+    gyroPredictMatcher.GeometryValidation();
+    mask_ll = gyroPredictMatcher.mvStatus;
+    auto &gyro_pred_pts = gyroPredictMatcher.mvPtGyroPredictUn;
+    auto &pred_pts = gyroPredictMatcher.mvPtPredictUn;
 
-    auto &predicted_points = gyroPredictMatcher.mvPtGyroPredictUn;
-    auto &predict_status = gyroPredictMatcher.mvStatus;
-    if (undistort_keypoints){
-      predicted_points = gyroPredictMatcher.mvPtGyroPredict;
+    for (size_t i = 0; i < pred_pts.size(); i++) {
+      pts_left_new.at(i).pt = pred_pts.at(i);
     }
 
-    for (size_t i = 0; i < predicted_points.size(); i++) {
-      if (!predict_status[i]) continue;
-      pts_left_new.at(i).pt = predicted_points.at(i);
-    }
+    if (draw_gyro_predictions) {
+      static const cv::Scalar COLOR_BLUE(255, 0, 0);
+      static const cv::Scalar COLOR_GREEN(0, 255, 0);
+      static const cv::Scalar COLOR_RED(0, 0, 255);
+      static const cv::Scalar COLOR_WHITE(255, 255, 255);
+      static const cv::Scalar COLOR_YELLOW(0, 255, 255);
+      // constexpr int circle_radius = 2;
+      // constexpr int circle_thickness = -1;
+      constexpr int line_thickness = 1;
+      auto im_out = img.clone();
+      cv::cvtColor(im_out, im_out, cv::COLOR_GRAY2BGR);
 
-    perform_matching(img_pyramid_last[cam_id], imgpyr, pts_left_old, pts_left_new, cam_id, cam_id, mask_ll);
-
-    cv::Scalar COLOR_BLUE(255, 0, 0);
-    cv::Scalar COLOR_GREEN(0, 255, 0);
-    cv::Scalar COLOR_RED(0, 0, 255);
-    cv::Scalar COLOR_WHITE(255, 255, 255);
-    cv::Scalar COLOR_YELLOW(0, 255, 255);
-    constexpr int circle_radius = 2;
-    constexpr int circle_thickness = -1;
-    constexpr int line_thickness = 1;
-    auto im_out = img_cur.clone();
-    cv::cvtColor(im_out, im_out, cv::COLOR_GRAY2BGR);
-
-    for (size_t i = 0; i < predicted_points.size(); i++) {
-      mask_ll[i] = mask_ll[i] && predict_status[i];  
-      // cv::circle(im_out, pts_left_old[i].pt, circle_radius, COLOR_BLUE, circle_thickness);
-      // cv::circle(im_out, pts_left_new[i].pt, circle_radius, COLOR_GREEN, circle_thickness);
-      if (mask_ll[i]){
-        cv::arrowedLine(im_out, pts_left_old[i].pt, predicted_points[i], COLOR_BLUE, line_thickness, cv::LINE_AA);
-        cv::line(im_out, pts_left_old[i].pt, pts_left_new[i].pt, COLOR_GREEN, line_thickness, cv::LINE_AA);
+      for (size_t i = 0; i < gyro_pred_pts.size(); i++) {
+        // cv::circle(im_out, pts_left_old[i].pt, circle_radius, COLOR_BLUE, circle_thickness);
+        // cv::circle(im_out, pts_left_new[i].pt, circle_radius, COLOR_GREEN, circle_thickness);
+        if (mask_ll[i]) {
+          cv::arrowedLine(im_out, pts_left_old[i].pt, gyro_pred_pts[i], COLOR_BLUE, line_thickness, cv::LINE_AA);
+          cv::line(im_out, pts_left_old[i].pt, pts_left_new[i].pt, COLOR_GREEN, line_thickness, cv::LINE_AA);
+        } else if (gyro_pred_pts[i].x != 0) {
+          cv::line(im_out, pts_left_old[i].pt, pts_left_new[i].pt, COLOR_RED, line_thickness, cv::LINE_AA);
+        }
+        // cv::circle(im_out, pts_left_new[i].pt, circle_radius, COLOR_RED, circle_thickness);
       }
-      else {
-        cv::line(im_out, pts_left_old[i].pt, pts_left_new[i].pt, COLOR_RED, line_thickness, cv::LINE_AA);
+
+      extern bool step_mode;
+      cv::imshow("win", im_out);
+      if (step_mode) {
+        int key;
+        do {
+          key = cv::waitKey(0);
+          if (key == 'q') {
+            exit(0);
+          }
+        } while (key != 32 /*space key*/);
       }
-      // cv::circle(im_out, pts_left_new[i].pt, circle_radius, COLOR_RED, circle_thickness);
     }
-
-    cv::imshow("win", im_out);
-    int key;
-    do
-    {
-      key = cv::waitKey(0);
-      if(key == 'q') {
-        exit(0);
-      }
-    } while (key != 32 /*space key*/);
-    
-
-    std::ofstream fp_match(save_folder_path + "matchFlow.txt", ofstream::app);
-    std::ofstream fp_error(save_folder_path + "errorFlow.txt", ofstream::app);
-    fp_match << std::fixed << std::setprecision(3);
-    fp_match << message.timestamp << ": ";
-    fp_error << std::fixed << std::setprecision(3);
-    fp_error << message.timestamp << ": ";
-    for (size_t i = 0; i < pts_left_old.size(); i++)
-    {
-      if (!mask_ll[i]) continue;
-      fp_match << pts_left_new[i].pt - pts_left_old[i].pt << " ";
-      fp_error << pts_left_new[i].pt - predicted_points[i] << " ";
-    }
-    fp_match << std::endl;
-    fp_error << std::endl;
-
-    // gyroPredictMatcher.TrackFeatures();
-    // gyroPredictMatcher.GeometryValidation();
-    // mask_ll = gyroPredictMatcher.mvStatus;
-    
-    // for (size_t i = 0; i < gyroPredictMatcher.mvPtPredictUn.size(); i++) {
-    //   pts_left_new.at(i).pt = gyroPredictMatcher.mvPtPredictUn.at(i);
-    // }
-
   }
 
   assert(pts_left_new.size() == ids_left_old.size());
@@ -642,7 +592,7 @@ void TrackKLT::perform_detection_monocular(const std::vector<cv::Mat> &img0pyr, 
 
   // First compute how many more features we need to extract from this image
   // If we don't need any features, just return
-  double min_feat_percent = 0.50;
+  extern double min_feat_percent;
   int num_featsneeded = num_features - (int)pts0.size();
   if (num_featsneeded < std::min(20, (int)(min_feat_percent * num_features)))
     return;
