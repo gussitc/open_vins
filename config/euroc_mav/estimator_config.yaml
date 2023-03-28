@@ -1,6 +1,6 @@
 %YAML:1.0 # need to specify the file type at the top!
 
-verbosity: "INFO" # ALL, DEBUG, INFO, WARNING, ERROR, SILENT
+verbosity: "DEBUG" # ALL, DEBUG, INFO, WARNING, ERROR, SILENT
 
 use_fej: true # if first-estimate Jacobians should be used (enable for good consistency)
 use_imuavg: true # if using discrete integration, if we should average sequential IMU measurements to "smooth" it
@@ -87,17 +87,19 @@ use_gyro_aided_tracker: true
 half_patch_size: 10
 num_pts: 200 # number of points (per camera) we will extract and try to track
 pyr_levels: 3
-win_size: 15
+win_size: 21
 min_feat_percent: 1.0
 init_with_gyro_pred: false
+show_visualization: false
+draw_gyro_predictions: true
+step_mode: true
+write_to_file: true
 
 # not really used
 use_mask: false # masks for our images
 rectify_image: true
 
-draw_gyro_predictions: false
-skip_frames: 1
-step_mode: false
+skip_frames: 5
 
 # our front-end feature tracking parameters
 # we have a KLT and descriptor based (KLT is better implemented...)

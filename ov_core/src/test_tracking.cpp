@@ -115,6 +115,9 @@ namespace ov_core {
 }
 bool use_mask = false;
 bool rectify_image = false;
+bool show_visualization = false;
+bool write_to_file = false;
+int pyr_levels = 5;
 
 // Main function
 int main(int argc, char **argv) {
@@ -161,18 +164,6 @@ int main(int argc, char **argv) {
   nh->param<double>("bag_start", bag_start, 0);
   nh->param<double>("bag_durr", bag_durr, -1);
 
-  // clear output files instead of appending
-  std::vector<std::string> output_files = {GyroAidedTracker::TRACK_FEATURES_FILE_NAME, 
-                                           GyroAidedTracker::TIME_COST_FILE_NAME,
-                                           "angVel.txt",
-                                           "gyroFlow.txt",
-                                           "matchFlow.txt",
-                                           "errorFlow.txt"};
-  for (auto filename : output_files){
-    std::ofstream fp(save_folder_path + filename, ofstream::out);
-    fp.close();
-  }
-
   //===================================================================================
   //===================================================================================
   //===================================================================================
@@ -191,7 +182,6 @@ int main(int argc, char **argv) {
   double knn_ratio = 0.70;
   bool do_downsizing = false;
   bool use_stereo = false;
-  int pyr_levels = 5;
   int win_size = 15;
   int skip_frames = 1;
   parser->parse_config("max_cameras", max_cameras, false);
@@ -216,6 +206,22 @@ int main(int argc, char **argv) {
   parser->parse_config("init_with_gyro_pred", init_with_gyro_pred, true);
   parser->parse_config("step_mode", step_mode, true);
   parser->parse_config("min_feat_percent", min_feat_percent, true);
+  parser->parse_config("show_visualization", show_visualization, true);
+  parser->parse_config("write_to_file", write_to_file, true);
+
+  if (write_to_file){
+    // clear output files instead of appending
+    std::vector<std::string> output_files = {GyroAidedTracker::TRACK_FEATURES_FILE_NAME, 
+                                            GyroAidedTracker::TIME_COST_FILE_NAME,
+                                            "angVel.txt",
+                                            "gyroFlow.txt",
+                                            "matchFlow.txt",
+                                            "errorFlow.txt"};
+    for (auto filename : output_files){
+      std::ofstream fp(save_folder_path + filename, ofstream::out);
+      fp.close();
+    }
+  }
 
   // Histogram method
   ov_core::TrackBase::HistogramMethod method;
@@ -464,14 +470,16 @@ void handle_stereo(double time0, double time1, cv::Mat img0, cv::Mat img1) {
   }
 
   // Display the resulting tracks
-  cv::Mat img_active, img_history;
-  extractor->display_active(img_active, 255, 0, 0, 0, 0, 255);
-  extractor->display_history(img_history, 255, 255, 0, 255, 255, 255);
+  if (show_visualization) {
+    cv::Mat img_active, img_history;
+    extractor->display_active(img_active, 255, 0, 0, 0, 0, 255);
+    extractor->display_history(img_history, 255, 255, 0, 255, 255, 255);
 
-  // Show our image!
-  cv::imshow("Active Tracks", img_active);
-  cv::imshow("Track History", img_history);
-  cv::waitKey(1);
+    // Show our image!
+    cv::imshow("Active Tracks", img_active);
+    cv::imshow("Track History", img_history);
+    cv::waitKey(1);
+  }
 
   // Get lost tracks
   std::shared_ptr<FeatureDatabase> database = extractor->get_feature_database();

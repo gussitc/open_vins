@@ -106,5 +106,5 @@ install(TARGETS test_profile
         RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
-
-
+add_executable(benchmark benchmark.cpp)
+target_link_libraries(benchmark pixel_aware_gyro_aided_klt_feature_tracker ${OpenCV_LIBRARIES})

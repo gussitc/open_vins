@@ -5,7 +5,13 @@ import pathlib
 import matplotlib
 matplotlib.use('GTK3Agg')
 import matplotlib.pyplot as plt
-from scan_params import gyro_results_file, no_gyro_results_file
+# from scan_params import gyro_results_file, no_gyro_results_file
+
+# no_gyro_results_file = '/home/gustav/catkin_ws_ov/src/open_vins/ov_core/no_gyro_results.txt'
+# gyro_results_file = '/home/gustav/catkin_ws_ov/src/open_vins/ov_core/gyro_results.txt'
+
+no_gyro_results_file = '/home/gustav/catkin_ws_ov/src/open_vins/ov_core/pyr3_no_gyro_results.txt'
+gyro_results_file = '/home/gustav/catkin_ws_ov/src/open_vins/ov_core/pyr3_gyro_results.txt'
 
 
 def main():
@@ -19,11 +25,16 @@ def main():
     no_gyro_fps_arr = no_gyro_results[:, 1]
     no_gyro_track_rate_arr = no_gyro_results[:, 2]
 
+    def plot_line(ax, x):
+        ax.axvline(x = x, color = 'r', label = f'x = {x}')
+
+    x = 54
+    x = 63
     # Create the plot and add lines for x, y, and z
     fig, ax = plt.subplots()
     ax.plot(gyro_win_size_arr, gyro_fps_arr, label='gyro')
     ax.plot(no_gyro_win_size_arr, no_gyro_fps_arr, label='no gyro')
-    # ax.axvline(x = 40, color = 'r', label = 'x = 40')
+    # plot_line(ax, x)
     ax.set_xlabel('Window size')
     ax.set_ylabel('FPS')
     ax.set_title('Average FPS')
@@ -33,7 +44,7 @@ def main():
     fig, ax = plt.subplots()
     ax.plot(gyro_win_size_arr, gyro_track_rate_arr, label='gyro')
     ax.plot(no_gyro_win_size_arr, no_gyro_track_rate_arr, label='no gyro')
-    # ax.axvline(x = 40, color = 'r', label = 'x = 40')
+    # plot_line(ax, x)
     ax.set_xlabel('Window size')
     ax.set_ylabel('Track rate')
     ax.set_title('Average track rate (good tracks / num keypoints)')
