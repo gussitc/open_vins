@@ -252,11 +252,11 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vect
           else if (key == 's'){
             printf("saving images\n");
             // std::ofstream fp(save_folder_path + "/../mKRKinv.txt", ofstream::app);
-            FileStorage fp(save_folder_path + "/../data.yml", FileStorage::WRITE);
+            FileStorage fp(save_folder_path + "/data.yml", FileStorage::WRITE);
             // fp << std::fixed << std::setprecision(6);
             fp << "Rcl" << gyroPredictMatcher.mRcl;
-            cv::imwrite(save_folder_path + "/../img0.png", img_last[cam_id]);
-            cv::imwrite(save_folder_path + "/../img1.png", img);
+            cv::imwrite(save_folder_path + "/img0.png", img_last[cam_id]);
+            cv::imwrite(save_folder_path + "/img1.png", img);
           }
         } while (key != 32 /*space key*/);
       }
