@@ -42,9 +42,8 @@ static const int circle_size = 2;
 
 std::string file_path("/home/gustav/catkin_ws_ov/src/open_vins/ov_core/output/");
 int write_to_file = false;
-int pyr_levels = 3;
+int pyr_levels = 5;
 int half_patch_size = 10;
-bool use_gyro = true;
 
 int main(){
     auto img0 = imread(file_path + "img0.png");
@@ -60,13 +59,18 @@ int main(){
     fp["Rcl"] >> Rcl;
 
     vector<Point2f> p0, p1;
-    goodFeaturesToTrack(img0, p0, 10, 0.7, 30, Mat(), 7);
+    goodFeaturesToTrack(img0, p0, 30, 0.5, 30, Mat(), 7);
     p1 = p0;
 
     cv::Size win_size = Size(2 * half_patch_size + 1, 2 * half_patch_size + 1);
     std::vector<cv::Mat> imgpyr0, imgpyr1;
     cv::buildOpticalFlowPyramid(img0, imgpyr0, win_size, pyr_levels);
     cv::buildOpticalFlowPyramid(img1, imgpyr1, win_size, pyr_levels);
+
+    Mat derivatives[2];
+    split(imgpyr0[1],derivatives);
+    imshow("derivative x", derivatives[0]);
+    imshow("derivative y", derivatives[1]);
 
     // Convert keypoints into points (stupid opencv stuff)
     std::vector<cv::KeyPoint> kp0;
@@ -85,8 +89,13 @@ int main(){
     // gyroPredictMatcher.TrackFeatures();
     gyroPredictMatcher.GyroPredictFeatures();
 
+    bool use_gyro = false;
+    bool inverse = false;
+    bool illumination = false;
+    bool affine = false;
+    bool regularization = false;
     PatchMatch patchMatch(&gyroPredictMatcher, half_patch_size, 30, pyr_levels,
-                          use_gyro, false, true, true, false);
+                          use_gyro, inverse, illumination, affine, regularization);
 
     auto start = chrono::high_resolution_clock::now();
     patchMatch.OpticalFlowMultiLevel();

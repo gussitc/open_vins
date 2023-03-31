@@ -200,9 +200,9 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vect
                       pts_left_old,
                       vImuFromLastFrame, imuCalib, biasg,
                       pCameraParams.mK, pCameraParams.mDistCoef, cv::Mat(),
-                      // GyroAidedTracker::IMAGE_ONLY_OPTICAL_FLOW_CONSIDER_ILLUMINATION,
+                      GyroAidedTracker::IMAGE_ONLY_OPTICAL_FLOW_CONSIDER_ILLUMINATION,
                       // GyroAidedTracker::OPENCV_OPTICAL_FLOW_PYR_LK,
-                      GyroAidedTracker::GYRO_PREDICT_WITH_OPTICAL_FLOW_REFINED_CONSIDER_ILLUMINATION_DEFORMATION,
+                      // GyroAidedTracker::GYRO_PREDICT_WITH_OPTICAL_FLOW_REFINED_CONSIDER_ILLUMINATION_DEFORMATION,
                       GyroAidedTracker::PIXEL_AWARE_PREDICTION,
                       save_folder_path, half_patch_size);
 
@@ -211,6 +211,10 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vect
     mask_ll = gyroPredictMatcher.mvStatus;
     auto &gyro_pred_pts = gyroPredictMatcher.mvPtGyroPredictUn;
     auto &pred_pts = gyroPredictMatcher.mvPtPredictUn;
+
+    auto opencv_points = pts_left_new;
+    auto opencv_mask = mask_ll;
+    perform_matching(img_pyramid_last[cam_id], imgpyr, pts_left_old, opencv_points, cam_id, cam_id, opencv_mask);
 
     for (size_t i = 0; i < pred_pts.size(); i++) {
       pts_left_new.at(i).pt = pred_pts.at(i);
@@ -228,19 +232,24 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vect
       auto im_out = img.clone();
       cv::cvtColor(im_out, im_out, cv::COLOR_GRAY2BGR);
 
-      for (size_t i = 0; i < gyro_pred_pts.size(); i++) {
+      for (size_t i = 0; i < pred_pts.size(); i++) {
         // cv::circle(im_out, pts_left_old[i].pt, circle_radius, COLOR_BLUE, circle_thickness);
         // cv::circle(im_out, pts_left_new[i].pt, circle_radius, COLOR_GREEN, circle_thickness);
+        if (opencv_mask[i]){
+          cv::line(im_out, pts_left_old[i].pt, opencv_points[i].pt, COLOR_YELLOW, line_thickness, cv::LINE_AA);
+        }
         if (mask_ll[i]) {
-          cv::arrowedLine(im_out, pts_left_old[i].pt, gyro_pred_pts[i], COLOR_BLUE, line_thickness, cv::LINE_AA);
           cv::line(im_out, pts_left_old[i].pt, pts_left_new[i].pt, COLOR_GREEN, line_thickness, cv::LINE_AA);
-        } else if (gyro_pred_pts[i].x != 0) {
+          if (gyro_pred_pts.size() == 0) continue;
+          cv::arrowedLine(im_out, pts_left_old[i].pt, gyro_pred_pts[i], COLOR_BLUE, line_thickness, cv::LINE_AA);
+        } else {//if (gyro_pred_pts[i].x != 0) {
           cv::line(im_out, pts_left_old[i].pt, pts_left_new[i].pt, COLOR_RED, line_thickness, cv::LINE_AA);
         }
         // cv::circle(im_out, pts_left_new[i].pt, circle_radius, COLOR_RED, circle_thickness);
       }
 
       extern bool step_mode;
+      resize(im_out, im_out, Size(), 2, 2);
       cv::imshow("win", im_out);
       if (step_mode) {
         int key;
