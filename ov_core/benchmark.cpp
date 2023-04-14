@@ -90,7 +90,7 @@ int main(){
     gyroPredictMatcher.GyroPredictFeatures();
 
     bool use_gyro = false;
-    bool inverse = false;
+    bool inverse = true;
     bool illumination = false;
     bool affine = false;
     bool regularization = false;

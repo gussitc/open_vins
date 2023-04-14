@@ -22,6 +22,7 @@ else ()
 endif ()
 
 add_subdirectory(pixel_aware_gyro_aided_klt_feature_tracker)
+add_subdirectory(my-klt)
 
 # Include our header files
 include_directories(
@@ -38,6 +39,7 @@ list(APPEND thirdparty_libraries
         ${OpenCV_LIBRARIES}
         ${catkin_LIBRARIES}
         pixel_aware_gyro_aided_klt_feature_tracker
+        gyro_lk
 )
 
 ##################################################

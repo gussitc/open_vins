@@ -10,3 +10,4 @@ doc
 .vscode
 output
 __pycache__
+data

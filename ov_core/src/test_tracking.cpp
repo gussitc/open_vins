@@ -112,6 +112,9 @@ namespace ov_core {
   bool init_with_gyro_pred = false;
   bool step_mode = false;
   double min_feat_percent = 0.5;
+  bool projective_prediction = false;
+  bool predict_transform = false;
+  double ransac_threshold = 3.0;
 }
 bool use_mask = false;
 bool rectify_image = false;
@@ -208,6 +211,9 @@ int main(int argc, char **argv) {
   parser->parse_config("min_feat_percent", min_feat_percent, true);
   parser->parse_config("show_visualization", show_visualization, true);
   parser->parse_config("write_to_file", write_to_file, true);
+  parser->parse_config("projective_prediction", projective_prediction, true);
+  parser->parse_config("ransac_threshold", ransac_threshold, true);
+  parser->parse_config("predict_transform", predict_transform, true);
 
   if (write_to_file){
     // clear output files instead of appending
@@ -256,8 +262,8 @@ int main(int argc, char **argv) {
   std::unordered_map<size_t, std::shared_ptr<CamBase>> cameras;
   for (int i = 0; i < 2; i++) {
     Eigen::Matrix<double, 8, 1> cam0_calib;
-    cam0_calib << 1, 1, 0, 0, 0, 0, 0, 0;
-    // cam0_calib << fx, fy, cx, cy, k1, k2, p1, p2;
+    // cam0_calib << 1, 1, 0, 0, 0, 0, 0, 0;
+    cam0_calib << fx, fy, cx, cy, k1, k2, p1, p2;
     std::shared_ptr<CamBase> camera_calib = std::make_shared<CamRadtan>(width, height);
     camera_calib->set_value(cam0_calib);
     cameras.insert({i, camera_calib});
@@ -304,7 +310,7 @@ int main(int argc, char **argv) {
 
   // Our stereo pair we have
   bool has_left = false;
-  bool has_right = false;
+  // bool has_right = false;
   cv::Mat img0, img1;
   double time0 = time_init.toSec();
   double time1 = time_init.toSec();
@@ -370,7 +376,7 @@ int main(int argc, char **argv) {
         continue;
       }
       // Save to our temp variable
-      has_right = true;
+      // has_right = true;
       cv::equalizeHist(cv_ptr->image, img1);
       // img1 = cv_ptr->image.clone();
       time1 = cv_ptr->header.stamp.toSec();
@@ -383,7 +389,7 @@ int main(int argc, char **argv) {
       handle_stereo(time0, time1, img0, img1);
       // reset bools
       has_left = false;
-      has_right = false;
+      // has_right = false;
     }
   }
 
@@ -399,11 +405,7 @@ int main(int argc, char **argv) {
   printf("average track_length/lost_feat = %.2f\n", (double) featslengths_total / num_lostfeats_total);
   printf("average marg_tracks/frame = %.2f\n", (double)num_margfeats_total / frames_total);
   printf("average good_tracks/num_ref_keys = %.4f\n", (double)num_good_tracks_total / ref_num_keys_total);
-  printf("%d | %d | %.2f | %.2f | %.2f | \n%.4f\n%.4f\n", 
-    ref_num_keys_total,
-    num_good_tracks_total,
-    (double)num_lostfeats_total / frames_total,
-    (double)featslengths_total / num_lostfeats_total,
+  printf("%.4f\n%.4f\n%.4f\n", 
     (double)num_margfeats_total / frames_total,
     (double)num_good_tracks_total / ref_num_keys_total,
     average_fps);

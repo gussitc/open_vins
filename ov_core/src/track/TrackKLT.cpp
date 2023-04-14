@@ -31,6 +31,8 @@
 
 #include "gyro_aided_tracker.h"
 #include "frame.h"
+#include "gyro_lk.hpp"
+#include "utils.hpp"
 
 using namespace ov_core;
 
@@ -73,7 +75,7 @@ void TrackKLT::feed_new_camera_and_imu(const CameraData &message, const std::vec
 
     // Extract image pyramid
     std::vector<cv::Mat> imgpyr;
-    cv::buildOpticalFlowPyramid(img, imgpyr, win_size, pyr_levels);
+    pyr_levels = cv::buildOpticalFlowPyramid(img, imgpyr, win_size, pyr_levels);
 
     // Save!
     img_curr[cam_id] = img;
@@ -142,11 +144,39 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vect
   std::vector<cv::KeyPoint> pts_left_new = pts_left_old;
 
   extern bool use_gyro_aided_tracker;
+  extern int half_patch_size;
+  extern double ransac_threshold;
+
+  auto K = camera_calib.at(cam_id)->get_K();
+  auto D = camera_calib.at(cam_id)->get_D();
+  auto K_mat_double = cv::Mat(3,3,CV_64F, K.val);
+  auto D_mat_double = cv::Mat(4,1,CV_64F, D.val);
+  cv::Mat K_mat;
+  cv::Mat D_mat;
+  K_mat_double.convertTo(K_mat, CV_32F);
+  D_mat_double.convertTo(D_mat, CV_32F);
+
   if (!use_gyro_aided_tracker){
 
     // Lets track temporally
-    perform_matching(img_pyramid_last[cam_id], imgpyr, pts_left_old, pts_left_new, cam_id, cam_id, mask_ll);
+    // perform_matching(img_pyramid_last[cam_id], imgpyr, pts_left_old, pts_left_new, cam_id, cam_id, mask_ll);
 
+    std::vector<cv::Point2f> pts0, pts1;
+    for (size_t i = 0; i < pts_left_old.size(); i++) {
+      pts0.push_back(pts_left_old.at(i).pt);
+    }
+    vector<uchar> status_lk;
+    pyramidal_lk(
+      img_pyramid_last[cam_id], img_pyramid_curr[cam_id], pts0, pts1, status_lk,
+      pyr_levels, half_patch_size, 0.01, 30
+    );
+
+    perform_ransac(pts0, pts1, status_lk, K_mat, D_mat, ransac_threshold);
+    mask_ll = status_lk;
+
+    for (size_t i = 0; i < pts1.size(); i++){
+      pts_left_new[i].pt = pts1[i];
+    }
   }
   else {
     /// Pixel-Aware Gyro-Aided KLT Feature Tracking
@@ -154,13 +184,17 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vect
     IMU::Calib imuCalib;
 
     // FIXME(gustav): this is taken straight from the euroc imucam_chain.yaml
-    float Tbc_data[16] =   {0.0148655429818, -0.999880929698, 0.00414029679422, -0.0216401454975,
+    static float Tbc_data[16] =   {0.0148655429818, -0.999880929698, 0.00414029679422, -0.0216401454975,
       0.999557249008, 0.0149672133247, 0.025715529948, -0.064676986768,
       -0.0257744366974, 0.00375618835797, 0.999660727178, 0.00981073058949,
       0.0, 0.0, 0.0, 1.0};
     imuCalib.Tbc = cv::Mat(4, 4, CV_32F, Tbc_data);
+    cv::Mat Rbc = imuCalib.Tbc({0,3}, {0,3});
 
     std::vector<IMU::Point> vImuFromLastFrame(imu_data.size());
+    std::vector<ImuMeas> imu_meas(imu_data.size());
+    std::vector<cv::Point3f> gyro_meas(imu_data.size());
+    std::vector<double> imu_timestamps(imu_data.size());
     // auto it = imu_data.begin();
     // for (auto &it : imu_data)
     for (size_t i = 0; i < imu_data.size(); i++)
@@ -174,16 +208,10 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vect
       imu.w.x = it.wm.x();
       imu.w.y = it.wm.y();
       imu.w.z = it.wm.z();
+      imu_meas[i] = ImuMeas(imu.a, imu.w, imu.t);
+      gyro_meas[i] = imu.w;
+      imu_timestamps[i] = imu.t;
     }
-
-    auto K = camera_calib.at(cam_id)->get_K();
-    auto D = camera_calib.at(cam_id)->get_D();
-    auto K_mat_double = cv::Mat(3,3,CV_64F, K.val);
-    auto D_mat_double = cv::Mat(4,1,CV_64F, D.val);
-    cv::Mat K_mat;
-    cv::Mat D_mat;
-    K_mat_double.convertTo(K_mat, CV_32F);
-    D_mat_double.convertTo(D_mat, CV_32F);
     
     // Convert keypoints into points (stupid opencv stuff)
     std::vector<cv::Point2f> pts0;
@@ -192,33 +220,63 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vect
     }
 
     extern CameraParams pCameraParams; // defined in test_tracking.cpp
-    extern int half_patch_size;
     extern std::string save_folder_path;
     extern bool draw_gyro_predictions;
 
-    GyroAidedTracker gyroPredictMatcher(message.timestamp, timestamp_last[cam_id], img_last[cam_id], img,
-                      pts_left_old,
-                      vImuFromLastFrame, imuCalib, biasg,
-                      pCameraParams.mK, pCameraParams.mDistCoef, cv::Mat(),
-                      GyroAidedTracker::IMAGE_ONLY_OPTICAL_FLOW_CONSIDER_ILLUMINATION,
-                      // GyroAidedTracker::OPENCV_OPTICAL_FLOW_PYR_LK,
-                      // GyroAidedTracker::GYRO_PREDICT_WITH_OPTICAL_FLOW_REFINED_CONSIDER_ILLUMINATION_DEFORMATION,
-                      GyroAidedTracker::PIXEL_AWARE_PREDICTION,
-                      save_folder_path, half_patch_size);
+    // GyroAidedTracker gyroPredictMatcher(message.timestamp, timestamp_last[cam_id], img_last[cam_id], img,
+    //                   pts_left_old,
+    //                   vImuFromLastFrame, imuCalib, biasg,
+    //                   pCameraParams.mK, pCameraParams.mDistCoef, cv::Mat(),
+    //                   GyroAidedTracker::IMAGE_ONLY_OPTICAL_FLOW_CONSIDER_ILLUMINATION,
+    //                   // GyroAidedTracker::OPENCV_OPTICAL_FLOW_PYR_LK,
+    //                   // GyroAidedTracker::GYRO_PREDICT_WITH_OPTICAL_FLOW_REFINED_CONSIDER_ILLUMINATION_DEFORMATION,
+    //                   GyroAidedTracker::PIXEL_AWARE_PREDICTION,
+    //                   save_folder_path, half_patch_size);
 
-    gyroPredictMatcher.TrackFeatures();
-    gyroPredictMatcher.GeometryValidation();
-    mask_ll = gyroPredictMatcher.mvStatus;
-    auto &gyro_pred_pts = gyroPredictMatcher.mvPtGyroPredictUn;
-    auto &pred_pts = gyroPredictMatcher.mvPtPredictUn;
+    // gyroPredictMatcher.TrackFeatures();
+    // gyroPredictMatcher.GeometryValidation();
+    // mask_ll = gyroPredictMatcher.mvStatus;
+    // auto &gyro_pred_pts = gyroPredictMatcher.mvPtGyroPredictUn;
+    // auto &pts_pred = gyroPredictMatcher.mvPtPredictUn;
 
-    auto opencv_points = pts_left_new;
-    auto opencv_mask = mask_ll;
-    perform_matching(img_pyramid_last[cam_id], imgpyr, pts_left_old, opencv_points, cam_id, cam_id, opencv_mask);
+    Mat Rcl;
+    integrate_imu_measurements(message.timestamp, timestamp_last[cam_id], imu_meas, Rbc, Rcl);
 
-    for (size_t i = 0; i < pred_pts.size(); i++) {
-      pts_left_new.at(i).pt = pred_pts.at(i);
-    }
+    auto pts_pred = pts0;
+    vector<uchar> status_pred;
+    vector<Mat> transform_pred;
+    extern bool projective_prediction, predict_transform;
+    pixel_aware_prediction(pts0, pts_pred, status_pred, transform_pred, Rcl, K_mat, D_mat,
+                           img.cols, img.rows, half_patch_size, projective_prediction); 
+
+    auto pts1 = pts_pred, pts1_cv = pts_pred;
+    vector<uchar> status_lk = status_pred, status_lk_cv = status_pred;
+    if (!predict_transform)
+      transform_pred = vector<Mat>();
+    gyro_aided_lk(
+      img_pyramid_last[cam_id], img_pyramid_curr[cam_id], pts0, pts1, status_lk, transform_pred, 
+      pyr_levels, half_patch_size, 0.01, 30
+    );
+
+    auto _pts1 = pts1;
+    vector<uchar> _status_lk = vector<uchar>(status_lk.size(), 0);
+
+    // pyramidal_lk(
+    //   img_pyramid_last[cam_id], img_pyramid_curr[cam_id], pts0, _pts1, _status_lk,
+    //   pyr_levels, half_patch_size, 0.01, 30
+    // );
+    // perform_ransac(pts0, _pts1, _status_lk, K_mat, D_mat, ransac_threshold);
+
+    perform_ransac(pts0, pts1, status_lk, K_mat, D_mat, ransac_threshold);
+    mask_ll = status_lk;
+
+
+    for (size_t i = 0; i < pts1.size(); i++)
+      pts_left_new[i].pt = pts1[i];
+    
+    // auto opencv_points = pts_left_new;
+    // auto opencv_mask = mask_ll;
+    // perform_matching(img_pyramid_last[cam_id], imgpyr, pts_left_old, opencv_points, cam_id, cam_id, opencv_mask);
 
     if (draw_gyro_predictions) {
       static const cv::Scalar COLOR_BLUE(255, 0, 0);
@@ -232,21 +290,37 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vect
       auto im_out = img.clone();
       cv::cvtColor(im_out, im_out, cv::COLOR_GRAY2BGR);
 
-      for (size_t i = 0; i < pred_pts.size(); i++) {
+      for (size_t i = 0; i < pts_pred.size(); i++) {
         // cv::circle(im_out, pts_left_old[i].pt, circle_radius, COLOR_BLUE, circle_thickness);
         // cv::circle(im_out, pts_left_new[i].pt, circle_radius, COLOR_GREEN, circle_thickness);
-        if (opencv_mask[i]){
-          cv::line(im_out, pts_left_old[i].pt, opencv_points[i].pt, COLOR_YELLOW, line_thickness, cv::LINE_AA);
+        if (!status_pred[i]){
+          // cv::line(im_out, pts_left_old[i].pt, pts_pred[i], COLOR_CYAN, line_thickness, cv::LINE_AA);
+          continue;
         }
-        if (mask_ll[i]) {
+        cv::line(im_out, pts_left_old[i].pt, pts_pred[i], COLOR_YELLOW, line_thickness, cv::LINE_AA);
+        cv::circle(im_out, pts_pred[i], 2, COLOR_YELLOW, -1);
+
+        // if (status_lk_cv[i]){
+        //   cv::line(im_out, pts_left_old[i].pt, pts1_cv[i], COLOR_BLUE, line_thickness, cv::LINE_AA);
+        //   cv::circle(im_out, pts1_cv[i], 2, COLOR_BLUE, -1);
+        // }
+        if (status_lk[i]) {
           cv::line(im_out, pts_left_old[i].pt, pts_left_new[i].pt, COLOR_GREEN, line_thickness, cv::LINE_AA);
-          if (gyro_pred_pts.size() == 0) continue;
-          cv::arrowedLine(im_out, pts_left_old[i].pt, gyro_pred_pts[i], COLOR_BLUE, line_thickness, cv::LINE_AA);
-        } else {//if (gyro_pred_pts[i].x != 0) {
+          cv::circle(im_out, pts_left_new[i].pt, 2, COLOR_GREEN, -1);
+          if (transform_pred.size() > 0)
+            draw_transform(im_out, pts_left_new[i].pt, half_patch_size, transform_pred[i], COLOR_GREEN);
+        }else{
           cv::line(im_out, pts_left_old[i].pt, pts_left_new[i].pt, COLOR_RED, line_thickness, cv::LINE_AA);
         }
+
+        if (_status_lk[i]){
+          cv::line(im_out, pts_left_old[i].pt, _pts1[i], COLOR_BLUE, line_thickness, cv::LINE_AA);
+          cv::circle(im_out, _pts1[i], 2, COLOR_BLUE, -1);
+        }
+
         // cv::circle(im_out, pts_left_new[i].pt, circle_radius, COLOR_RED, circle_thickness);
       }
+      cout << "gyro: " << countNonZero(status_lk) << ", image: " << countNonZero(_status_lk) << endl;
 
       extern bool step_mode;
       resize(im_out, im_out, Size(), 2, 2);
@@ -259,15 +333,28 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vect
             exit(0);
           }
           else if (key == 's'){
+            // throw std::runtime_error("saving images not supported");
             printf("saving images\n");
             // std::ofstream fp(save_folder_path + "/../mKRKinv.txt", ofstream::app);
-            FileStorage fp(save_folder_path + "/data.yml", FileStorage::WRITE);
+            static const string save_folder = "/home/gustav/catkin_ws_ov/src/open_vins/ov_core/my-klt/";
+            FileStorage fp(save_folder + "/data.yml", FileStorage::WRITE);
             // fp << std::fixed << std::setprecision(6);
-            fp << "Rcl" << gyroPredictMatcher.mRcl;
-            cv::imwrite(save_folder_path + "/img0.png", img_last[cam_id]);
-            cv::imwrite(save_folder_path + "/img1.png", img);
+            fp << "K" << K_mat;
+            fp << "D" << D_mat;
+            fp << "Rbc" << Rbc;
+            fp << "Rcl" << Rcl;
+            fp << "p0" << pts0;
+            fp << "timestamp" << message.timestamp; 
+            fp << "timestamp_last" << timestamp_last[cam_id];
+            fp << "gyro_meas" << gyro_meas;
+            fp << "imu_timestamps" << imu_timestamps;
+            cv::imwrite(save_folder + "/img0.png", img_last[cam_id]);
+            cv::imwrite(save_folder + "/img1.png", img);
           }
         } while (key != 32 /*space key*/);
+      }
+      else {
+        cv::waitKey(1);
       }
     }
   }
