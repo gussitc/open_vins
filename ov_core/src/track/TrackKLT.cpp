@@ -159,24 +159,24 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vect
   if (!use_gyro_aided_tracker){
 
     // Lets track temporally
-    // perform_matching(img_pyramid_last[cam_id], imgpyr, pts_left_old, pts_left_new, cam_id, cam_id, mask_ll);
+    perform_matching(img_pyramid_last[cam_id], imgpyr, pts_left_old, pts_left_new, cam_id, cam_id, mask_ll);
 
-    std::vector<cv::Point2f> pts0, pts1;
-    for (size_t i = 0; i < pts_left_old.size(); i++) {
-      pts0.push_back(pts_left_old.at(i).pt);
-    }
-    vector<uchar> status_lk;
-    pyramidal_lk(
-      img_pyramid_last[cam_id], img_pyramid_curr[cam_id], pts0, pts1, status_lk,
-      pyr_levels, half_patch_size, 0.01, 30
-    );
+    // std::vector<cv::Point2f> pts0, pts1;
+    // for (size_t i = 0; i < pts_left_old.size(); i++) {
+    //   pts0.push_back(pts_left_old.at(i).pt);
+    // }
+    // vector<uchar> status_lk;
+    // pyramidal_lk(
+    //   img_pyramid_last[cam_id], img_pyramid_curr[cam_id], pts0, pts1, status_lk,
+    //   pyr_levels, half_patch_size, 0.01, 30
+    // );
 
-    perform_ransac(pts0, pts1, status_lk, K_mat, D_mat, ransac_threshold);
-    mask_ll = status_lk;
+    // perform_ransac(pts0, pts1, status_lk, K_mat, D_mat, ransac_threshold);
+    // mask_ll = status_lk;
 
-    for (size_t i = 0; i < pts1.size(); i++){
-      pts_left_new[i].pt = pts1[i];
-    }
+    // for (size_t i = 0; i < pts1.size(); i++){
+    //   pts_left_new[i].pt = pts1[i];
+    // }
   }
   else {
     /// Pixel-Aware Gyro-Aided KLT Feature Tracking
@@ -1098,10 +1098,12 @@ void TrackKLT::perform_matching(const std::vector<cv::Mat> &img0pyr, const std::
 
   // Do RANSAC outlier rejection (note since we normalized the max pixel error is now in the normalized cords)
   std::vector<uchar> mask_rsc;
-  double max_focallength_img0 = std::max(camera_calib.at(id0)->get_K()(0, 0), camera_calib.at(id0)->get_K()(1, 1));
-  double max_focallength_img1 = std::max(camera_calib.at(id1)->get_K()(0, 0), camera_calib.at(id1)->get_K()(1, 1));
-  double max_focallength = std::max(max_focallength_img0, max_focallength_img1);
-  cv::findFundamentalMat(pts0_n, pts1_n, cv::FM_RANSAC, 2.0 / max_focallength, 0.999, mask_rsc);
+  // double max_focallength_img0 = std::max(camera_calib.at(id0)->get_K()(0, 0), camera_calib.at(id0)->get_K()(1, 1));
+  // double max_focallength_img1 = std::max(camera_calib.at(id1)->get_K()(0, 0), camera_calib.at(id1)->get_K()(1, 1));
+  // double max_focallength = std::max(max_focallength_img0, max_focallength_img1);
+  // cv::findFundamentalMat(pts0_n, pts1_n, cv::FM_RANSAC, 2.0 / max_focallength, 0.999, mask_rsc);
+  extern double ransac_threshold;
+  cv::findFundamentalMat(pts0_n, pts1_n, cv::FM_RANSAC, ransac_threshold, 0.999, mask_rsc);
 
   // Loop through and record only ones that are valid
   for (size_t i = 0; i < mask_klt.size(); i++) {
