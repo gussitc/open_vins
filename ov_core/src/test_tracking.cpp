@@ -98,6 +98,13 @@ int fps = 20;
 int width = 752;
 int height= 480;
 
+typedef enum {
+  LK_OPENCV = 0,
+  LK_MY_KLT = 1,
+  LK_GYRO   = 2,
+  LK_AFFINE = 3
+} LK_TYPE;
+
 namespace ov_core {
   int half_patch_size = 5;
   std::string save_folder_path("/home/gustav/catkin_ws_ov/src/open_vins/ov_core/output/");
@@ -108,14 +115,16 @@ namespace ov_core {
   CameraParams pCameraParams("cam_type", fx, fy, cx, cy, k1, k2, p1, p2, k3, width, height, fps);
 
   bool use_gyro_aided_tracker = false;
+  bool use_opencv_lk = false;
   bool draw_gyro_predictions = false;
   bool init_with_gyro_pred = false;
-  bool step_mode = false;
   double min_feat_percent = 0.5;
   bool projective_prediction = false;
   bool predict_transform = false;
   double ransac_threshold = 3.0;
+  int lk_method = LK_OPENCV;
 }
+bool step_mode = false;
 bool use_mask = false;
 bool rectify_image = false;
 bool show_visualization = false;
@@ -214,6 +223,8 @@ int main(int argc, char **argv) {
   parser->parse_config("projective_prediction", projective_prediction, true);
   parser->parse_config("ransac_threshold", ransac_threshold, true);
   parser->parse_config("predict_transform", predict_transform, true);
+  parser->parse_config("use_opencv_lk", use_opencv_lk, true);
+  parser->parse_config("lk_method", lk_method, true);
 
   if (write_to_file){
     // clear output files instead of appending

@@ -133,6 +133,10 @@ protected:
   void perform_matching(const std::vector<cv::Mat> &img0pyr, const std::vector<cv::Mat> &img1pyr, std::vector<cv::KeyPoint> &pts0,
                         std::vector<cv::KeyPoint> &pts1, size_t id0, size_t id1, std::vector<uchar> &mask_out);
 
+  void perform_matching_custom(const std::vector<cv::Mat> &img0pyr, const std::vector<cv::Mat> &img1pyr, std::vector<cv::KeyPoint> &kpts0,
+                               std::vector<cv::KeyPoint> &kpts1, size_t id0, size_t id1, std::vector<uchar> &mask_out, 
+                               const std::vector<ov_core::ImuData> &imu_data, double t, double t_ref);
+
   // Parameters for our FAST grid detector
   int threshold;
   int grid_x;
