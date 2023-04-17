@@ -33,6 +33,9 @@
 #include "frame.h"
 #include "gyro_lk.hpp"
 #include "utils.hpp"
+#include <chrono>
+
+static const string save_folder = "/home/gustav/catkin_ws_ov/src/open_vins/ov_core/my-klt/";
 
 using namespace ov_core;
 
@@ -153,38 +156,6 @@ void draw_predictions(const Mat &img, vector<Point2f> &pts0, vector<Point2f> &pt
   double scale = 2.0;
   resize(img_out, img_out, Size(), scale, scale, INTER_NEAREST);
   cv::imshow("predictions", img_out);
-  extern bool step_mode;
-  if (step_mode) {
-    int key;
-    do {
-      key = cv::waitKey(0);
-      if (key == 'q') {
-        exit(0);
-      }
-      else if (key == 's'){
-        throw std::runtime_error("saving images not supported");
-        // printf("saving images\n");
-        // std::ofstream fp(save_folder_path + "/../mKRKinv.txt", ofstream::app);
-        // static const string save_folder = "/home/gustav/catkin_ws_ov/src/open_vins/ov_core/my-klt/";
-        // FileStorage fp(save_folder + "/data.yml", FileStorage::WRITE);
-        // fp << std::fixed << std::setprecision(6);
-        // fp << "K" << K_mat;
-        // fp << "D" << D_mat;
-        // fp << "Rbc" << Rbc;
-        // fp << "Rcl" << Rcl;
-        // fp << "p0" << pts0;
-        // fp << "timestamp" << message.timestamp; 
-        // fp << "timestamp_last" << timestamp_last[cam_id];
-        // fp << "gyro_meas" << gyro_meas;
-        // fp << "imu_timestamps" << imu_timestamps;
-        // cv::imwrite(save_folder + "/img0.png", img_last[cam_id]);
-        // cv::imwrite(save_folder + "/img1.png", img);
-      }
-    } while (key != 32 /*space key*/);
-  }
-  else {
-    cv::waitKey(1);
-  }
 }
 
 void TrackKLT::perform_matching_custom(const std::vector<cv::Mat> &img0pyr, const std::vector<cv::Mat> &img1pyr, std::vector<cv::KeyPoint> &kpts0,
@@ -229,6 +200,8 @@ void TrackKLT::perform_matching_custom(const std::vector<cv::Mat> &img0pyr, cons
 
   Matx33d Rcl;
   std::vector<ImuMeas> imu_meas(imu_data.size());
+  vector<Point3f> gyro_meas(imu_data.size());
+  vector<double> imu_timestamps(imu_data.size());
   auto pts_pred = pts0;
   vector<uchar> status_pred;
   vector<Mat> transform_pred;
@@ -245,11 +218,16 @@ void TrackKLT::perform_matching_custom(const std::vector<cv::Mat> &img0pyr, cons
       imu.w.x = it.wm.x();
       imu.w.y = it.wm.y();
       imu.w.z = it.wm.z();
+      gyro_meas[i] = imu.w;
+      imu_timestamps[i] = imu.t;      
     }
 
     integrate_imu_measurements(t, t_ref, imu_meas, Rbc, Rcl);
-
-    pixel_aware_prediction(pts0, pts_pred, status_pred, transform_pred, Rcl, camera_calib.at(id0)->get_K(), camera_calib.at(id0)->get_D(),
+    if (lk_method == 2)
+      pixel_aware_prediction_centers_only(pts0, pts_pred, status_pred, Rcl, camera_calib.at(id0)->get_K(), camera_calib.at(id0)->get_D(),
+                            img0pyr[0].cols, img0pyr[0].rows);
+    else
+      pixel_aware_prediction(pts0, pts_pred, status_pred, transform_pred, Rcl, camera_calib.at(id0)->get_K(), camera_calib.at(id0)->get_D(),
                             img0pyr[0].cols, img0pyr[0].rows, half_patch_size, false); 
     pts1 = pts_pred;
     mask_klt = status_pred;
@@ -258,21 +236,29 @@ void TrackKLT::perform_matching_custom(const std::vector<cv::Mat> &img0pyr, cons
   switch (lk_method)
   {
   case 0:
-    cv::calcOpticalFlowPyrLK(img0pyr, img1pyr, pts0, pts1, mask_klt, error, win_size, pyr_levels, term_crit, cv::OPTFLOW_USE_INITIAL_FLOW);
+    throw std::runtime_error("LK method 0 not supported");
     break;
   case 1:
-    pyramidal_lk(
-      img0pyr, img1pyr, pts0, pts1, mask_klt,
-      pyr_levels, half_patch_size, epsilon, max_iter
-    );
+    if (use_opencv_lk)
+      cv::calcOpticalFlowPyrLK(img0pyr, img1pyr, pts0, pts1, mask_klt, error, win_size, pyr_levels, term_crit);
+    else
+      pyramidal_lk(
+        img0pyr, img1pyr, pts0, pts1, mask_klt,
+        pyr_levels, half_patch_size, epsilon, max_iter
+      );
     break;
   case 2:
-    gyro_aided_lk(
-      img0pyr, img1pyr, pts0, pts1, mask_klt, empty_vec, 
-      pyr_levels, half_patch_size, epsilon, max_iter
-    );
+    if (use_opencv_lk)
+      cv::calcOpticalFlowPyrLK(img0pyr, img1pyr, pts0, pts1, mask_klt, error, win_size, pyr_levels, term_crit, cv::OPTFLOW_USE_INITIAL_FLOW);
+    else
+      gyro_aided_lk(
+        img0pyr, img1pyr, pts0, pts1, mask_klt, empty_vec, 
+        pyr_levels, half_patch_size, epsilon, max_iter
+      );
     break;
   case 3:
+    if (use_opencv_lk)
+      throw std::runtime_error("OpenCV LK not supportf for affine method");
     gyro_aided_lk(
       img0pyr, img1pyr, pts0, pts1, mask_klt, transform_pred, 
       pyr_levels, half_patch_size, epsilon, max_iter
@@ -294,10 +280,8 @@ void TrackKLT::perform_matching_custom(const std::vector<cv::Mat> &img0pyr, cons
   // Do RANSAC outlier rejection (note since we normalized the max pixel error is now in the normalized cords)
   extern double ransac_threshold;
   double max_focallength = std::max(camera_calib.at(id0)->get_K()(0, 0), camera_calib.at(id0)->get_K()(1, 1));
-  // TODO: why is the formula like this
-  ransac_threshold = 2.0 / max_focallength;
   std::vector<uchar> mask_rsc;
-  cv::findFundamentalMat(pts0_n, pts1_n, cv::FM_RANSAC, ransac_threshold, 0.999, mask_rsc);
+  cv::findFundamentalMat(pts0_n, pts1_n, cv::FM_RANSAC, ransac_threshold/max_focallength, 0.999, mask_rsc);
 
   extern bool draw_gyro_predictions;
   if (lk_method > 1 && draw_gyro_predictions){
@@ -320,6 +304,37 @@ void TrackKLT::perform_matching_custom(const std::vector<cv::Mat> &img0pyr, cons
     }
 
     draw_predictions(img1pyr[0], pts0, pts1, pts_pred, pts1_no_gyro, status_pred, mask_gyro, mask_no_gyro, transform_pred, half_patch_size);
+
+    extern bool step_mode;
+    if (step_mode) {
+      int key;
+      do {
+        key = cv::waitKey(0);
+        if (key == 'q') {
+          exit(0);
+        }
+        else if (key == 's'){
+          // throw std::runtime_error("saving images not supported");
+          printf("saving images\n");
+          FileStorage fp(save_folder + "/data.yml", FileStorage::WRITE);
+          // fp << std::fixed << std::setprecision(6);
+          fp << "K" << camera_calib[id0]->get_K();
+          fp << "D" << camera_calib[id0]->get_D();
+          fp << "Rbc" << Rbc;
+          fp << "Rcl" << Rcl;
+          fp << "p0" << pts0;
+          fp << "timestamp" << t; 
+          fp << "timestamp_last" << t_ref;
+          fp << "gyro_meas" << gyro_meas;
+          fp << "imu_timestamps" << imu_timestamps;
+          cv::imwrite(save_folder + "/img0.png", img0pyr[0]);
+          cv::imwrite(save_folder + "/img1.png", img1pyr[0]);
+        }
+      } while (key != 32 /*space key*/);
+    }
+    else {
+      cv::waitKey(1);
+    }
   }
 
   // Loop through and record only ones that are valid
@@ -380,8 +395,15 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vect
   std::vector<cv::KeyPoint> pts_left_new = pts_left_old;
 
   // Lets track temporally
+  auto start = std::chrono::high_resolution_clock::now();
   perform_matching_custom(img_pyramid_last[cam_id], imgpyr, pts_left_old, pts_left_new, cam_id, cam_id,
                           mask_ll, imu_data, message.timestamp, timestamp_last[cam_id]);
+  auto stop = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+
+  std::ofstream fp;
+  fp.open(save_folder + "/runtime.txt", std::ios::app);
+  fp <<  duration.count() / 1e6 << endl;
 
   assert(pts_left_new.size() == ids_left_old.size());
   rT4 = boost::posix_time::microsec_clock::local_time();

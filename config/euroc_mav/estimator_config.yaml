@@ -83,25 +83,26 @@ filepath_gt: "/tmp/ov_groundtruth.txt"
 # bag_path: "/home/gustav/catkin_ws_ov/data/V2_03_difficult.bag"
 bag_path: "/home/gustav/catkin_ws_ov/data/V2_03_difficult_short.bag"
 
-use_opencv_lk: false
-# lk_method: 0 # LK_OPENCV
-# lk_method: 1 # LK_MY_KLT
-# lk_method: 2 # LK_GYRO
-lk_method: 3 # LK_AFFINE
+use_opencv_lk: true
+lk_method: 2
+# lk_method: 2
+# lk_method: 2
+# lk_method: 2
+# lk_method: 2
 use_gyro_aided_tracker: false
-half_patch_size: 5
-win_size: 21
-num_pts: 200 # number of points (per camera) we will extract and try to track
+half_patch_size: 20
+# win_size: 21
+num_pts: 500 # number of points (per camera) we will extract and try to track
 pyr_levels: 3
 predict_transform: true
 projective_prediction: false
-# ransac_threshold: 0.005
+ransac_threshold: 5.0
 min_feat_percent: 0.5
 clone_states: 10
 
 init_with_gyro_pred: false
 show_visualization: false
-draw_gyro_predictions: true
+draw_gyro_predictions: false
 step_mode: true
 write_to_file: false
 

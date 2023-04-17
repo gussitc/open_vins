@@ -34,6 +34,8 @@
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
+#include <chrono>
+#include <time.h>
 
 #include "cam/CamRadtan.h"
 #include "feat/Feature.h"
@@ -61,8 +63,9 @@ int num_margfeats = 0;
 int featslengths = 0;
 int clone_states = 10;
 std::deque<double> clonetimes;
-ros::Time time_start;
-ros::Time time_beginning;
+// auto time_start = std::chrono::high_resolution_clock::now();
+// auto time_beginning = std::chrono::high_resolution_clock::now();
+timespec time_start, time_beginning;
 
 int num_lostfeats_total = 0;
 int featslengths_total = 0;
@@ -123,8 +126,8 @@ namespace ov_core {
   bool predict_transform = false;
   double ransac_threshold = 3.0;
   int lk_method = LK_OPENCV;
+  bool step_mode = false;
 }
-bool step_mode = false;
 bool use_mask = false;
 bool rectify_image = false;
 bool show_visualization = false;
@@ -194,7 +197,7 @@ int main(int argc, char **argv) {
   double knn_ratio = 0.70;
   bool do_downsizing = false;
   bool use_stereo = false;
-  int win_size = 15;
+  // int win_size = 15;
   int skip_frames = 1;
   parser->parse_config("max_cameras", max_cameras, false);
   parser->parse_config("num_pts", num_pts, false);
@@ -212,7 +215,7 @@ int main(int argc, char **argv) {
   parser->parse_config("rectify_image", rectify_image, true);
   parser->parse_config("half_patch_size", ov_core::half_patch_size, true);
   parser->parse_config("pyr_levels", pyr_levels, true);
-  parser->parse_config("win_size", win_size, true);
+  // parser->parse_config("win_size", win_size, true);
   parser->parse_config("draw_gyro_predictions", draw_gyro_predictions, true);
   parser->parse_config("skip_frames", skip_frames, true);
   parser->parse_config("init_with_gyro_pred", init_with_gyro_pred, true);
@@ -281,7 +284,7 @@ int main(int argc, char **argv) {
   }
 
   // Lets make a feature extractor
-  extractor = new TrackKLT(cameras, num_pts, num_aruco, use_stereo, method, fast_threshold, grid_x, grid_y, min_px_dist, pyr_levels, win_size);
+  extractor = new TrackKLT(cameras, num_pts, num_aruco, use_stereo, method, fast_threshold, grid_x, grid_y, min_px_dist, pyr_levels, 2*half_patch_size+1);
   // extractor = new TrackDescriptor(cameras, num_pts, num_aruco, use_stereo, method, fast_threshold, grid_x, grid_y, min_px_dist,
   // knn_ratio);
   // extractor = new TrackAruco(cameras, num_aruco, use_stereo, method, do_downsizing);
@@ -317,7 +320,9 @@ int main(int argc, char **argv) {
   }
 
   // Record the start time for our FPS counter
-  time_start = time_beginning = ros::Time::now();
+  // time_start = time_beginning = std::chrono::high_resolution_clock::now();
+  clock_gettime(CLOCK_MONOTONIC, &time_start);
+  time_beginning = time_start;
 
   // Our stereo pair we have
   bool has_left = false;
@@ -405,7 +410,12 @@ int main(int argc, char **argv) {
   }
 
   // Done!
-  double average_fps = (double) frames_total/ (ros::Time::now().toSec() - time_beginning.toSec());
+  // auto time_stop = std::chrono::high_resolution_clock::now();
+  // auto duration_us = std::chrono::duration_cast<std::chrono::microseconds>(time_stop - time_beginning).count();
+  timespec time_stop;
+  clock_gettime(CLOCK_MONOTONIC, &time_stop);
+  double duration_s = (time_stop.tv_sec - time_beginning.tv_sec) + (time_stop.tv_nsec - time_beginning.tv_nsec) / 1e9;
+  double average_fps = (double) frames_total/ duration_s;
   printf("average fps = %.2f\n", average_fps);
   printf("frames total = %d\n", frames_total);
   printf("ref keys total = %d\n", ref_num_keys_total);
@@ -416,10 +426,10 @@ int main(int argc, char **argv) {
   printf("average track_length/lost_feat = %.2f\n", (double) featslengths_total / num_lostfeats_total);
   printf("average marg_tracks/frame = %.2f\n", (double)num_margfeats_total / frames_total);
   printf("average good_tracks/num_ref_keys = %.4f\n", (double)num_good_tracks_total / ref_num_keys_total);
-  printf("%.4f\n%.4f\n%.4f\n", 
+  printf("%.4f\n%.4f\n%d\n", 
     (double)num_margfeats_total / frames_total,
     (double)num_good_tracks_total / ref_num_keys_total,
-    average_fps);
+    frames_total);
   return EXIT_SUCCESS;
 }
 
@@ -538,11 +548,15 @@ void handle_stereo(double time0, double time1, cv::Mat img0, cv::Mat img1) {
 
   // Debug print out what our current processing speed it
   // We want the FPS to be as high as possible
-  ros::Time time_curr = ros::Time::now();
+  // auto time_curr = std::chrono::high_resolution_clock::now();
+  timespec time_curr;
+  clock_gettime(CLOCK_MONOTONIC, &time_curr);
   // if (time_curr.toSec()-time_start.toSec() > 2) {
   if (frames > 60) {
     // Calculate the FPS
-    double fps = (double)frames / (time_curr.toSec() - time_start.toSec());
+    // auto duration_us = std::chrono::duration_cast<std::chrono::microseconds>(time_curr - time_start);
+    double duration_s = (double)(time_curr.tv_sec - time_start.tv_sec) + (double)(time_curr.tv_nsec - time_start.tv_nsec) / 1e9;
+    double fps = (double)frames / duration_s;
     double lpf = (double)num_lostfeats / frames;
     double fpf = (double)featslengths / num_lostfeats;
     double mpf = (double)num_margfeats / frames;
