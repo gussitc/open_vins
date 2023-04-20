@@ -194,9 +194,10 @@ void TrackKLT::perform_matching_custom(const std::vector<cv::Mat> &img0pyr, cons
   const static double epsilon = 0.01;
   const static int max_iter = 30;
   const static cv::TermCriteria term_crit = cv::TermCriteria(cv::TermCriteria::COUNT | cv::TermCriteria::EPS, max_iter, epsilon);
-  static const Matx33d Rbc(0.0148655429818, -0.999880929698, 0.00414029679422,
-                                  0.999557249008, 0.0149672133247, 0.025715529948,
-                                -0.0257744366974, 0.00375618835797, 0.999660727178);
+  // static const Matx33d Rbc(0.0148655429818, -0.999880929698, 0.00414029679422,
+  //                                 0.999557249008, 0.0149672133247, 0.025715529948,
+  //                               -0.0257744366974, 0.00375618835797, 0.999660727178);
+  Matx33d Rbc = camera_calib.at(id0)->T_imu_cam.get_minor<3,3>(0,0);
 
   Matx33d Rcl;
   std::vector<ImuMeas> imu_meas(imu_data.size());

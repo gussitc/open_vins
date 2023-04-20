@@ -32,8 +32,10 @@
 #include <sensor_msgs/Image.h>
 #include <sensor_msgs/Imu.h>
 
+#include <Eigen/Dense>
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
+#include <opencv2/core/eigen.hpp>
 #include <chrono>
 #include <time.h>
 
@@ -83,7 +85,6 @@ void handle_stereo(double time0, double time1, cv::Mat img0, cv::Mat img1);
 
 // IMU stuff added by Gustav
 std::queue<ov_core::ImuData> imu_buffer;
-std::string topic_imu = "/imu0";
 double img_time_prev = -1;
 double img_time_curr = -1;
 
@@ -178,6 +179,23 @@ int main(int argc, char **argv) {
   double bag_start, bag_durr;
   nh->param<double>("bag_start", bag_start, 0);
   nh->param<double>("bag_durr", bag_durr, -1);
+
+  Eigen::Matrix4d Tic_eigen;
+  Matx44d T_imu_cam;
+  vector<double> intrinsics;
+  vector<double> distortion_coeffs;
+  string distortion_model;
+  string topic_imu;
+
+  parser->parse_external("relative_config_imucam", "cam0", "T_imu_cam", Tic_eigen);
+  parser->parse_external("relative_config_imucam", "cam0", "intrinsics", intrinsics);
+  parser->parse_external("relative_config_imucam", "cam0", "distortion_model", distortion_model);
+  parser->parse_external("relative_config_imucam", "cam0", "distortion_coeffs", distortion_coeffs);
+  // assert(distortion_model == "equidistant");
+
+  parser->parse_external("relative_config_imu", "imu0", "rostopic", topic_imu);
+
+  cv::eigen2cv(Tic_eigen, T_imu_cam);
 
   //===================================================================================
   //===================================================================================
@@ -277,8 +295,12 @@ int main(int argc, char **argv) {
   for (int i = 0; i < 2; i++) {
     Eigen::Matrix<double, 8, 1> cam0_calib;
     // cam0_calib << 1, 1, 0, 0, 0, 0, 0, 0;
-    cam0_calib << fx, fy, cx, cy, k1, k2, p1, p2;
+    // cam0_calib << fx, fy, cx, cy, k1, k2, p1, p2;
+    cam0_calib << intrinsics[0], intrinsics[1], intrinsics[2], intrinsics[3],
+                  distortion_coeffs[0], distortion_coeffs[1], distortion_coeffs[2], distortion_coeffs[3];
     std::shared_ptr<CamBase> camera_calib = std::make_shared<CamRadtan>(width, height);
+    camera_calib->T_imu_cam = T_imu_cam;
+    // std::shared_ptr<CamBase> camera_calib = std::make_shared<Equi>(width, height);
     camera_calib->set_value(cam0_calib);
     cameras.insert({i, camera_calib});
   }
