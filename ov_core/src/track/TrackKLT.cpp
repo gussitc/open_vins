@@ -297,7 +297,7 @@ void TrackKLT::perform_matching_custom(const std::vector<cv::Mat> &img0pyr, cons
       pts1_no_gyro_n.push_back(camera_calib.at(id0)->undistort_cv(pts1_no_gyro.at(i)));
     }
 
-    cv::findFundamentalMat(pts0_n, pts1_no_gyro_n, cv::FM_RANSAC, ransac_threshold, 0.999, mask_no_gyro_rsc);
+    cv::findFundamentalMat(pts0_n, pts1_no_gyro_n, cv::FM_RANSAC, ransac_threshold/max_focallength, 0.999, mask_no_gyro_rsc);
     vector<uchar> mask_gyro(mask_klt.size()), mask_no_gyro(mask_no_gyro_lk.size());
     for (size_t i = 0; i < pts0.size(); i++) {
       mask_gyro[i] = (uchar)(mask_klt[i] && mask_rsc[i]);

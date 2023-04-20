@@ -52,7 +52,8 @@
 
 using namespace ov_core;
 
-#define CONFIG_PATH "/home/gustav/catkin_ws_ov/src/open_vins/config/euroc_mav/estimator_config.yaml"
+// #define CONFIG_PATH "/home/gustav/catkin_ws_ov/src/open_vins/config/euroc_mav/estimator_config.yaml"
+#define CONFIG_PATH "/home/gustav/catkin_ws_ov/src/open_vins/ov_core/my-klt/config/config.yaml"
 
 // Our feature extractor
 TrackBase *extractor;
