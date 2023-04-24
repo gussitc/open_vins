@@ -35,7 +35,7 @@
 #include "utils.hpp"
 #include <chrono>
 
-static const string save_folder = "/home/gustav/catkin_ws_ov/src/open_vins/ov_core/my-klt/";
+static const string save_folder = "/home/gustav/catkin_ws_ov/src/open_vins/ov_core/my-klt/output/";
 
 using namespace ov_core;
 
@@ -402,9 +402,19 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vect
   auto stop = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
 
+  extern int lk_method;
+  string filename;
+  if (lk_method == 3){
+    filename = "/affine_runtime.txt";
+  } else if (lk_method == 2){
+    filename = "/gyro_runtime.txt";
+  } else{
+    filename = "/runtime.txt";
+  }
+
   std::ofstream fp;
-  fp.open(save_folder + "/runtime.txt", std::ios::app);
-  fp <<  duration.count() / 1e6 << endl;
+  fp.open(save_folder + filename, std::ios::app);
+  fp << message.timestamp << ": " << duration.count() / 1e6 << endl;
 
   assert(pts_left_new.size() == ids_left_old.size());
   rT4 = boost::posix_time::microsec_clock::local_time();

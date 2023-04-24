@@ -54,6 +54,9 @@ using namespace ov_core;
 
 // #define CONFIG_PATH "/home/gustav/catkin_ws_ov/src/open_vins/config/euroc_mav/estimator_config.yaml"
 #define CONFIG_PATH "/home/gustav/catkin_ws_ov/src/open_vins/ov_core/my-klt/config/config.yaml"
+#define SAVE_FOLDER_PATH "/home/gustav/catkin_ws_ov/src/open_vins/ov_core/my-klt/output/"
+string trackrate_file;
+string feats_marg_file;
 
 // Our feature extractor
 TrackBase *extractor;
@@ -181,14 +184,14 @@ int main(int argc, char **argv) {
   nh->param<double>("bag_start", bag_start, 0);
   nh->param<double>("bag_durr", bag_durr, -1);
 
-  Eigen::Matrix4d Tic_eigen;
+  Eigen::Matrix4d Tci_eigen;
   Matx44d T_imu_cam;
   vector<double> intrinsics;
   vector<double> distortion_coeffs;
   string distortion_model;
   string topic_imu;
 
-  parser->parse_external("relative_config_imucam", "cam0", "T_imu_cam", Tic_eigen);
+  parser->parse_external("relative_config_imucam", "cam0", "T_cam_imu", Tci_eigen);
   parser->parse_external("relative_config_imucam", "cam0", "intrinsics", intrinsics);
   parser->parse_external("relative_config_imucam", "cam0", "distortion_model", distortion_model);
   parser->parse_external("relative_config_imucam", "cam0", "distortion_coeffs", distortion_coeffs);
@@ -196,7 +199,7 @@ int main(int argc, char **argv) {
 
   parser->parse_external("relative_config_imu", "imu0", "rostopic", topic_imu);
 
-  cv::eigen2cv(Tic_eigen, T_imu_cam);
+  cv::eigen2cv(Tci_eigen.inverse().eval(), T_imu_cam);
 
   //===================================================================================
   //===================================================================================
@@ -248,18 +251,43 @@ int main(int argc, char **argv) {
   parser->parse_config("use_opencv_lk", use_opencv_lk, true);
   parser->parse_config("lk_method", lk_method, true);
 
-  if (write_to_file){
-    // clear output files instead of appending
-    std::vector<std::string> output_files = {GyroAidedTracker::TRACK_FEATURES_FILE_NAME, 
-                                            GyroAidedTracker::TIME_COST_FILE_NAME,
-                                            "angVel.txt",
-                                            "gyroFlow.txt",
-                                            "matchFlow.txt",
-                                            "errorFlow.txt"};
-    for (auto filename : output_files){
-      std::ofstream fp(save_folder_path + filename, ofstream::out);
-      fp.close();
-    }
+  // if (write_to_file){
+  //   // clear output files instead of appending
+  //   std::vector<std::string> output_files = {GyroAidedTracker::TRACK_FEATURES_FILE_NAME, 
+  //                                           GyroAidedTracker::TIME_COST_FILE_NAME,
+  //                                           "angVel.txt",
+  //                                           "gyroFlow.txt",
+  //                                           "matchFlow.txt",
+  //                                           "errorFlow.txt"};
+  //   for (auto filename : output_files){
+  //     std::ofstream fp(save_folder_path + filename, ofstream::out);
+  //     fp.close();
+  //   }
+  // }
+  std::vector<std::string> output_files;
+  string runtime_file;
+  if (lk_method == 3){
+    trackrate_file = SAVE_FOLDER_PATH "affine_trackRate.txt";
+    feats_marg_file = SAVE_FOLDER_PATH "affine_featsMarg.txt";
+    runtime_file = SAVE_FOLDER_PATH "affine_runtime.txt";
+    output_files.push_back(SAVE_FOLDER_PATH "angVel.txt");
+  } else if (lk_method == 2) {
+    trackrate_file = SAVE_FOLDER_PATH "gyro_trackRate.txt";
+    feats_marg_file = SAVE_FOLDER_PATH "gyro_featsMarg.txt";
+    runtime_file = SAVE_FOLDER_PATH "gyro_runtime.txt";
+  } else {
+    trackrate_file = SAVE_FOLDER_PATH "trackRate.txt";
+    feats_marg_file = SAVE_FOLDER_PATH "featsMarg.txt";
+    runtime_file = SAVE_FOLDER_PATH "runtime.txt";
+  }
+
+  output_files.push_back(trackrate_file);
+  output_files.push_back(feats_marg_file);
+  output_files.push_back(runtime_file);
+
+  for (auto filename : output_files){
+    std::ofstream fp(filename, ofstream::out);
+    fp.close();
   }
 
   // Histogram method
@@ -513,6 +541,8 @@ void handle_stereo(double time0, double time1, cv::Mat img0, cv::Mat img1) {
     ref_num_keys_total += ref_num_keys;
     num_good_tracks_total += num_good_tracks;
     frames_total += 1;    
+    std::ofstream fp(trackrate_file, std::ofstream::app);
+    fp << img_time_curr << ": " << (float)num_good_tracks/ref_num_keys << std::endl;
   }
 
   // Display the resulting tracks
@@ -564,6 +594,8 @@ void handle_stereo(double time0, double time1, cv::Mat img0, cv::Mat img1) {
     for (size_t i = 0; i < feats_marg.size(); i++) {
       feats_marg[i]->to_delete = true;
     }
+    std::ofstream fp(feats_marg_file, std::ofstream::app);
+    fp << img_time_curr << ": " << feats_marg.size() << std::endl;
   }
 
   // Tell the feature database to delete old features
