@@ -169,6 +169,8 @@ public:
   /// Gets the camera distortion
   cv::Vec4d get_D() { return camera_d_OPENCV; }
 
+  cv::Matx44d T_imu_cam;
+
   /// Gets the width of the camera images
   int w() { return _width; }
 

@@ -21,6 +21,8 @@ else ()
     set(CATKIN_GLOBAL_INCLUDE_DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
 endif ()
 
+add_subdirectory(my-klt)
+
 # Include our header files
 include_directories(
         src
@@ -34,6 +36,7 @@ list(APPEND thirdparty_libraries
         ${Boost_LIBRARIES}
         ${OpenCV_LIBRARIES}
         ${catkin_LIBRARIES}
+        gyro_lk
 )
 
 ##################################################

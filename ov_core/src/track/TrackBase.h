@@ -95,6 +95,7 @@ public:
    * @param message Contains our timestamp, images, and camera ids
    */
   virtual void feed_new_camera(const CameraData &message) = 0;
+  virtual void feed_new_camera_and_imu(const CameraData &message, const std::vector<ov_core::ImuData> &imu_data) = 0;
 
   /**
    * @brief Shows features extracted in the last image
@@ -187,6 +188,8 @@ protected:
 
   /// Set of IDs of each current feature in the database
   std::unordered_map<size_t, std::vector<size_t>> ids_last;
+
+  std::map<size_t, double> timestamp_last;
 
   /// Master ID for this tracker (atomic to allow for multi-threading)
   std::atomic<size_t> currid;

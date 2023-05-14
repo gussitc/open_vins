@@ -29,9 +29,13 @@
 #include "utils/opencv_lambda_body.h"
 #include "utils/print.h"
 
+#include "gyro_lk.hpp"
+
 using namespace ov_core;
 
-void TrackKLT::feed_new_camera(const CameraData &message) {
+void TrackKLT::feed_new_camera(const CameraData &message) {};
+
+void TrackKLT::feed_new_camera_and_imu(const CameraData &message, const std::vector<ov_core::ImuData> &imu_data){
 
   // Error check that we have all the data
   if (message.sensor_ids.empty() || message.sensor_ids.size() != message.images.size() || message.images.size() != message.masks.size()) {
@@ -78,7 +82,7 @@ void TrackKLT::feed_new_camera(const CameraData &message) {
   // Either call our stereo or monocular version
   // If we are doing binocular tracking, then we should parallize our tracking
   if (num_images == 1) {
-    feed_monocular(message, 0);
+    feed_monocular_and_imu(message, imu_data, 0);
   } else if (num_images == 2 && use_stereo) {
     feed_stereo(message, 0, 1);
   } else if (!use_stereo) {
@@ -93,8 +97,9 @@ void TrackKLT::feed_new_camera(const CameraData &message) {
   }
 }
 
-void TrackKLT::feed_monocular(const CameraData &message, size_t msg_id) {
+void TrackKLT::feed_monocular(const CameraData &message, size_t msg_id) {};
 
+void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vector<ov_core::ImuData> &imu_data, size_t msg_id){
   // Lock this data feed for this camera
   size_t cam_id = message.sensor_ids.at(msg_id);
   std::lock_guard<std::mutex> lck(mtx_feeds.at(cam_id));
@@ -119,6 +124,7 @@ void TrackKLT::feed_monocular(const CameraData &message, size_t msg_id) {
     img_mask_last[cam_id] = mask;
     pts_last[cam_id] = good_left;
     ids_last[cam_id] = good_ids_left;
+    timestamp_last[cam_id] = message.timestamp;
     return;
   }
 
@@ -135,7 +141,49 @@ void TrackKLT::feed_monocular(const CameraData &message, size_t msg_id) {
   std::vector<cv::KeyPoint> pts_left_new = pts_left_old;
 
   // Lets track temporally
-  perform_matching(img_pyramid_last[cam_id], imgpyr, pts_left_old, pts_left_new, cam_id, cam_id, mask_ll);
+  // perform_matching(img_pyramid_last[cam_id], imgpyr, pts_left_old, pts_left_new, cam_id, cam_id, mask_ll);
+
+  std::vector<cv::Point2f> pts0;
+  for (size_t i = 0; i < pts_left_old.size(); i++) {
+    pts0.push_back(pts_left_old.at(i).pt);
+  }
+
+  std::vector<ImuMeas> imu_meas;
+  for (size_t i = 0; i < imu_data.size(); i++) {
+    ImuMeas meas;
+    auto &imu = imu_data[i];
+    meas.t = imu.timestamp;
+    meas.a.x = imu.am[0];
+    meas.a.y = imu.am[1]; 
+    meas.a.z = imu.am[2];
+    meas.w.x = imu.wm[0];
+    meas.w.y = imu.wm[1];
+    meas.w.z = imu.wm[2];
+    imu_meas.push_back(meas);
+  }
+
+  cv::Matx33d K = camera_calib.at(cam_id)->get_K();
+  cv::Vec4d D = camera_calib.at(cam_id)->get_D();
+  double epsilon = 0.01;
+  int max_iterations = 30;
+  double max_focallength = std::max(K(0, 0), K(1, 1));
+  double threshold = 2.0/max_focallength;
+  double confidence = 0.999;
+  cv::Matx33d Rcl;
+  cv::Matx33d Rbc = camera_calib.at(cam_id)->T_imu_cam.get_minor<3,3>(0,0);
+  integrate_imu_measurements(message.timestamp, timestamp_last[cam_id], imu_meas, Rbc, Rcl);
+  LKState lk_state{GyroPredictType::EUCLIDEAN, pts0};
+  GyroPredictInput gyro_input{Rcl, K, D, img.cols, img.rows, half_patch_size};
+  pixel_aware_prediction(lk_state, gyro_input);
+  LKInput lk_input{img_pyramid_last[cam_id], imgpyr, pyr_levels, half_patch_size, epsilon, max_iterations};
+  gyro_aided_lk(lk_state, lk_input);
+  perform_ransac(lk_state, K, D, threshold, confidence);
+
+  for (size_t i = 0; i < pts_left_new.size(); i++) {
+    pts_left_new[i].pt = lk_state.pts1[i];
+    mask_ll.push_back(lk_state.status[i]);
+  }
+
   assert(pts_left_new.size() == ids_left_old.size());
   rT4 = boost::posix_time::microsec_clock::local_time();
 
@@ -143,6 +191,7 @@ void TrackKLT::feed_monocular(const CameraData &message, size_t msg_id) {
   if (mask_ll.empty()) {
     std::lock_guard<std::mutex> lckv(mtx_last_vars);
     img_last[cam_id] = img;
+    timestamp_last[cam_id] = message.timestamp;
     img_pyramid_last[cam_id] = imgpyr;
     img_mask_last[cam_id] = mask;
     pts_last[cam_id].clear();
@@ -183,6 +232,7 @@ void TrackKLT::feed_monocular(const CameraData &message, size_t msg_id) {
     std::lock_guard<std::mutex> lckv(mtx_last_vars);
     img_last[cam_id] = img;
     img_pyramid_last[cam_id] = imgpyr;
+    timestamp_last[cam_id] = message.timestamp;
     img_mask_last[cam_id] = mask;
     pts_last[cam_id] = good_left;
     ids_last[cam_id] = good_ids_left;

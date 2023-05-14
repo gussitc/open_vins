@@ -61,6 +61,7 @@ public:
    * @param message Contains our timestamp, images, and camera ids
    */
   void feed_new_camera(const CameraData &message) override;
+  void feed_new_camera_and_imu(const CameraData &message, const std::vector<ov_core::ImuData> &imu_data) override;
 
 protected:
   /**
@@ -69,6 +70,7 @@ protected:
    * @param msg_id the camera index in message data vector
    */
   void feed_monocular(const CameraData &message, size_t msg_id);
+  void feed_monocular_and_imu(const CameraData &message, const std::vector<ov_core::ImuData> &imu_data, size_t msg_id);
 
   /**
    * @brief Process new stereo pair of images
@@ -140,8 +142,9 @@ protected:
   int min_px_dist;
 
   // How many pyramid levels to track
-  int pyr_levels = 5;
-  cv::Size win_size = cv::Size(15, 15);
+  int pyr_levels = 3;
+  int half_patch_size = 10;
+  cv::Size win_size = cv::Size(2*half_patch_size+1, 2*half_patch_size+1);
 
   // Last set of image pyramids
   std::map<size_t, std::vector<cv::Mat>> img_pyramid_last;

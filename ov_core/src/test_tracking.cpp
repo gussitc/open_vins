@@ -43,6 +43,9 @@
 #include "utils/opencv_yaml_parse.h"
 #include "utils/print.h"
 
+#include <opencv2/core/eigen.hpp>
+#include <sensor_msgs/Imu.h>
+
 using namespace ov_core;
 
 // Our feature extractor
@@ -69,7 +72,9 @@ std::ofstream results_fs;
 double start_time = 0;
 double timestamp_prev = 0;
 double timestamp = 0;
+std::queue<ov_core::ImuData> imu_buffer;
 const std::string results_file = "/home/gustav/catkin_ws_ov/src/open_vins/ov_core/results.txt";
+bool show_visualization = true;
 
 // Main function
 int main(int argc, char **argv) {
@@ -118,6 +123,25 @@ int main(int argc, char **argv) {
   double bag_start, bag_durr;
   nh->param<double>("bag_start", bag_start, 0);
   nh->param<double>("bag_durr", bag_durr, -1);
+
+  Eigen::Matrix4d Tci_eigen;
+  cv::Matx44d T_imu_cam;
+  std::vector<double> intrinsics;
+  std::vector<double> distortion_coeffs;
+  std::string distortion_model;
+  std::string topic_imu;
+  std::vector<int> resolution;
+
+  parser->parse_external("relative_config_imucam", "cam0", "T_cam_imu", Tci_eigen);
+  parser->parse_external("relative_config_imucam", "cam0", "intrinsics", intrinsics);
+  parser->parse_external("relative_config_imucam", "cam0", "distortion_model", distortion_model);
+  parser->parse_external("relative_config_imucam", "cam0", "distortion_coeffs", distortion_coeffs);
+  parser->parse_external("relative_config_imucam", "cam0", "resolution", resolution);
+  // assert(distortion_model == "equidistant");
+
+  parser->parse_external("relative_config_imu", "imu0", "rostopic", topic_imu);
+
+  cv::eigen2cv(Tci_eigen.inverse().eval(), T_imu_cam);
 
   //===================================================================================
   //===================================================================================
@@ -182,8 +206,12 @@ int main(int argc, char **argv) {
   std::unordered_map<size_t, std::shared_ptr<CamBase>> cameras;
   for (int i = 0; i < 2; i++) {
     Eigen::Matrix<double, 8, 1> cam0_calib;
-    cam0_calib << 1, 1, 0, 0, 0, 0, 0, 0;
-    std::shared_ptr<CamBase> camera_calib = std::make_shared<CamRadtan>(100, 100);
+    // cam0_calib << 1, 1, 0, 0, 0, 0, 0, 0;
+    // cam0_calib << fx, fy, cx, cy, k1, k2, p1, p2;
+    cam0_calib << intrinsics[0], intrinsics[1], intrinsics[2], intrinsics[3],
+                  distortion_coeffs[0], distortion_coeffs[1], distortion_coeffs[2], distortion_coeffs[3];
+    std::shared_ptr<CamBase> camera_calib = std::make_shared<CamRadtan>(resolution[0], resolution[1]);
+    camera_calib->T_imu_cam = T_imu_cam;
     camera_calib->set_value(cam0_calib);
     cameras.insert({i, camera_calib});
   }
@@ -241,6 +269,19 @@ int main(int argc, char **argv) {
     // If ros is wants us to stop, break out
     if (!ros::ok())
       break;
+
+    if (m.getTopic() == topic_imu) {
+      // PRINT_DEBUG("processing imu = %.3f sec\n", msgs.at(m).getTime().toSec() - time_init.toSec());
+      const sensor_msgs::Imu::ConstPtr &msg = m.instantiate<sensor_msgs::Imu>();
+
+      // convert into correct format
+      ov_core::ImuData message;
+      message.timestamp = msg->header.stamp.toSec();
+      message.wm << msg->angular_velocity.x, msg->angular_velocity.y, msg->angular_velocity.z;
+      message.am << msg->linear_acceleration.x, msg->linear_acceleration.y, msg->linear_acceleration.z;
+
+      imu_buffer.push(message);
+    }
 
     // Handle LEFT camera
     sensor_msgs::Image::ConstPtr s0 = m.instantiate<sensor_msgs::Image>();
@@ -328,17 +369,34 @@ void handle_stereo(double time0, double time1, cv::Mat img0, cv::Mat img1) {
     message.images.push_back(img1);
     message.masks.push_back(mask);
   }
-  extractor->feed_new_camera(message);
+
+  std::vector<ov_core::ImuData> imu_data;
+
+  if (timestamp_prev != -1){
+    while(!imu_buffer.empty() && imu_buffer.front().timestamp < timestamp_prev){
+      imu_buffer.pop();
+    }
+
+    // Load imu measurements from previous frame
+    while(!imu_buffer.empty() && imu_buffer.front().timestamp < timestamp)
+    {
+      imu_data.push_back(imu_buffer.front());
+      imu_buffer.pop();
+    }
+  }
+  extractor->feed_new_camera_and_imu(message, imu_data);
 
   // Display the resulting tracks
-  cv::Mat img_active, img_history;
-  extractor->display_active(img_active, 255, 0, 0, 0, 0, 255);
-  extractor->display_history(img_history, 255, 255, 0, 255, 255, 255);
+  if (show_visualization) {
+    cv::Mat img_active, img_history;
+    extractor->display_active(img_active, 255, 0, 0, 0, 0, 255);
+    extractor->display_history(img_history, 255, 255, 0, 255, 255, 255);
 
-  // Show our image!
-  cv::imshow("Active Tracks", img_active);
-  cv::imshow("Track History", img_history);
-  cv::waitKey(1);
+    // Show our image!
+    cv::imshow("Active Tracks", img_active);
+    cv::imshow("Track History", img_history);
+    cv::waitKey(1);
+  }
 
   // Get lost tracks
   std::shared_ptr<FeatureDatabase> database = extractor->get_feature_database();
