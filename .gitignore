@@ -8,3 +8,7 @@ doxgen_generated
 *.swo
 doc
 .vscode
+data*/
+output*/
+__pycache__
+results*

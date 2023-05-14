@@ -64,14 +64,26 @@ int max_cameras = 2;
 // Our master function for tracking
 void handle_stereo(double time0, double time1, cv::Mat img0, cv::Mat img1);
 
+// Added by Gustav
+std::ofstream results_fs;
+double start_time = 0;
+double timestamp_prev = 0;
+double timestamp = 0;
+const std::string results_file = "/home/gustav/catkin_ws_ov/src/open_vins/ov_core/results.txt";
+
 // Main function
 int main(int argc, char **argv) {
 
   // Ensure we have a path, if the user passes it then we should use it
-  std::string config_path = "unset_path.txt";
-  if (argc > 1) {
-    config_path = argv[1];
-  }
+  // std::string config_path = "unset_path.txt";
+  std::string config_path = "/home/gustav/catkin_ws_ov/src/open_vins/config/euroc_mav/estimator_config.yaml";
+  // if (argc > 1) {
+  //   config_path = argv[1];
+  // }
+
+  results_fs.open(results_file, std::ios::out);
+  results_fs.close();
+  results_fs.open(results_file, std::ios::app);
 
   // Initialize this as a ROS node
   ros::init(argc, argv, "test_tracking");
@@ -96,7 +108,8 @@ int main(int argc, char **argv) {
 
   // Location of the ROS bag we want to read in
   std::string path_to_bag;
-  nh->param<std::string>("path_bag", path_to_bag, "/home/patrick/datasets/euroc_mav/V1_01_easy.bag");
+  parser->parse_config("bag_path", path_to_bag, false);
+  // nh->param<std::string>("path_bag", path_to_bag, "/home/patrick/datasets/euroc_mav/V1_01_easy.bag");
   // nh->param<std::string>("path_bag", path_to_bag, "/home/patrick/datasets/open_vins/aruco_room_01.bag");
   PRINT_INFO("ros bag path is: %s\n", path_to_bag.c_str());
 
@@ -200,6 +213,7 @@ int main(int argc, char **argv) {
   ros::Time time_init = view_full.getBeginTime();
   time_init += ros::Duration(bag_start);
   ros::Time time_finish = (bag_durr < 0) ? view_full.getEndTime() : time_init + ros::Duration(bag_durr);
+  start_time = time_init.toSec();
   PRINT_DEBUG("time start = %.6f\n", time_init.toSec());
   PRINT_DEBUG("time end   = %.6f\n", time_finish.toSec());
   view.addQuery(bag, time_init, time_finish);
@@ -244,6 +258,7 @@ int main(int argc, char **argv) {
       cv::equalizeHist(cv_ptr->image, img0);
       // img0 = cv_ptr->image.clone();
       time0 = cv_ptr->header.stamp.toSec();
+      timestamp = time0;
     }
 
     //  Handle RIGHT camera
@@ -275,6 +290,7 @@ int main(int argc, char **argv) {
   }
 
   // Done!
+  results_fs.close();
   return EXIT_SUCCESS;
 }
 
@@ -364,14 +380,17 @@ void handle_stereo(double time0, double time1, cv::Mat img0, cv::Mat img1) {
   // We want the FPS to be as high as possible
   ros::Time time_curr = ros::Time::now();
   // if (time_curr.toSec()-time_start.toSec() > 2) {
-  if (frames > 60) {
+  // if (frames > 60) {
+  if (true) {
     // Calculate the FPS
+    frames = 1;
     double fps = (double)frames / (time_curr.toSec() - time_start.toSec());
     double lpf = (double)num_lostfeats / frames;
-    double fpf = (double)featslengths / num_lostfeats;
+    double fpf = num_lostfeats == 0 ? 0 : (double)featslengths / num_lostfeats;
     double mpf = (double)num_margfeats / frames;
     // DEBUG PRINT OUT
-    PRINT_DEBUG("fps = %.2f | lost_feats/frame = %.2f | track_length/lost_feat = %.2f | marg_tracks/frame = %.2f\n", fps, lpf, fpf, mpf);
+    // PRINT_DEBUG("fps = %.2f | lost_feats/frame = %.2f | track_length/lost_feat = %.2f | marg_tracks/frame = %.2f\n", fps, lpf, fpf, mpf);
+    results_fs << timestamp - start_time << " " << fps << " " << lpf << " " << fpf << " " << mpf << std::endl;
     // Reset variables
     frames = 0;
     time_start = time_curr;
