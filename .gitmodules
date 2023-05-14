@@ -1,0 +1,3 @@
+[submodule "ov_core/my-klt"]
+	path = ov_core/my-klt
+	url = git@github.com:gussitc/my-klt.git
