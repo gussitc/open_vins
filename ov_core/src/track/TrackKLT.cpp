@@ -30,6 +30,7 @@
 #include "utils/print.h"
 
 #include "gyro_lk.hpp"
+#include "utils.hpp"
 
 using namespace ov_core;
 
@@ -162,6 +163,24 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vect
     imu_meas.push_back(meas);
   }
 
+  string lk_type = "";
+  GyroPredictType predict_type = GyroPredictType::NONE;
+  int visualize{-1};
+  LOAD_CONFIG(visualize);
+  LOAD_CONFIG(lk_type);
+  if (lk_type == "NONE")
+    predict_type = GyroPredictType::NONE;
+  else if (lk_type == "TRANSLATION")
+    predict_type = GyroPredictType::TRANSLATION;
+  else if (lk_type == "EUCLIDEAN")
+    predict_type = GyroPredictType::EUCLIDEAN;
+  else if (lk_type == "AFFINE")
+    predict_type = GyroPredictType::AFFINE;
+  else if (lk_type == "PERSPECTIVE")
+    predict_type = GyroPredictType::PERSPECTIVE;
+  else
+    throw std::runtime_error("Unknown gyro prediction type: " + lk_type);
+
   cv::Matx33d K = camera_calib.at(cam_id)->get_K();
   cv::Vec4d D = camera_calib.at(cam_id)->get_D();
   double epsilon = 0.01;
@@ -172,12 +191,19 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vect
   cv::Matx33d Rcl;
   cv::Matx33d Rbc = camera_calib.at(cam_id)->T_imu_cam.get_minor<3,3>(0,0);
   integrate_imu_measurements(message.timestamp, timestamp_last[cam_id], imu_meas, Rbc, Rcl);
-  LKState lk_state{GyroPredictType::EUCLIDEAN, pts0};
+  LKState lk_state{predict_type, pts0};
   GyroPredictInput gyro_input{Rcl, K, D, img.cols, img.rows, half_patch_size};
   pixel_aware_prediction(lk_state, gyro_input);
   LKInput lk_input{img_pyramid_last[cam_id], imgpyr, pyr_levels, half_patch_size, epsilon, max_iterations};
   gyro_aided_lk(lk_state, lk_input);
   perform_ransac(lk_state, K, D, threshold, confidence);
+  if (visualize){
+    Mat img0_bgr, img1_bgr;
+    cv::cvtColor(img_last[cam_id], img0_bgr, cv::COLOR_GRAY2BGR);
+    cv::cvtColor(img, img1_bgr, cv::COLOR_GRAY2BGR);
+    draw_results(img0_bgr, img1_bgr, lk_state, half_patch_size);
+    cv::waitKey(0);
+  }
 
   for (size_t i = 0; i < pts_left_new.size(); i++) {
     pts_left_new[i].pt = lk_state.pts1[i];

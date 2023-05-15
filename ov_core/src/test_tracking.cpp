@@ -74,7 +74,7 @@ double timestamp_prev = 0;
 double timestamp = 0;
 std::queue<ov_core::ImuData> imu_buffer;
 const std::string results_file = "/home/gustav/catkin_ws_ov/src/open_vins/ov_core/results.txt";
-bool show_visualization = true;
+bool show_visualization = false;
 
 // Main function
 int main(int argc, char **argv) {
@@ -124,7 +124,7 @@ int main(int argc, char **argv) {
   nh->param<double>("bag_start", bag_start, 0);
   nh->param<double>("bag_durr", bag_durr, -1);
 
-  Eigen::Matrix4d Tci_eigen;
+  Eigen::Matrix4d Tic_eigen;
   cv::Matx44d T_imu_cam;
   std::vector<double> intrinsics;
   std::vector<double> distortion_coeffs;
@@ -132,7 +132,7 @@ int main(int argc, char **argv) {
   std::string topic_imu;
   std::vector<int> resolution;
 
-  parser->parse_external("relative_config_imucam", "cam0", "T_cam_imu", Tci_eigen);
+  parser->parse_external("relative_config_imucam", "cam0", "T_imu_cam", Tic_eigen);
   parser->parse_external("relative_config_imucam", "cam0", "intrinsics", intrinsics);
   parser->parse_external("relative_config_imucam", "cam0", "distortion_model", distortion_model);
   parser->parse_external("relative_config_imucam", "cam0", "distortion_coeffs", distortion_coeffs);
@@ -141,7 +141,7 @@ int main(int argc, char **argv) {
 
   parser->parse_external("relative_config_imu", "imu0", "rostopic", topic_imu);
 
-  cv::eigen2cv(Tci_eigen.inverse().eval(), T_imu_cam);
+  cv::eigen2cv(Tic_eigen.eval(), T_imu_cam);
 
   //===================================================================================
   //===================================================================================
