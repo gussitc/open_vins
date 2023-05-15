@@ -23,6 +23,8 @@
 #define OV_CORE_TRACK_KLT_H
 
 #include "TrackBase.h"
+#include "utils.hpp"
+#include "gyro_lk.hpp"
 
 namespace ov_core {
 
@@ -54,7 +56,20 @@ public:
   explicit TrackKLT(std::unordered_map<size_t, std::shared_ptr<CamBase>> cameras, int numfeats, int numaruco, bool stereo,
                     HistogramMethod histmethod, int fast_threshold, int gridx, int gridy, int minpxdist)
       : TrackBase(cameras, numfeats, numaruco, stereo, histmethod), threshold(fast_threshold), grid_x(gridx), grid_y(gridy),
-        min_px_dist(minpxdist) {}
+        min_px_dist(minpxdist) {
+          LOAD_CONFIG(save_folder);
+          LOAD_CONFIG(visualize);
+          LOAD_CONFIG(step_mode);
+          LOAD_CONFIG(pyr_levels);
+          LOAD_CONFIG(half_patch_size);
+          win_size = cv::Size(2*half_patch_size+1, 2*half_patch_size+1);
+
+          string lk_type = "", lk_compare = "";
+          LOAD_CONFIG(lk_compare);
+          LOAD_CONFIG(lk_type);
+          predict_type = predict_type_from_string(lk_type);
+          compare_type = predict_type_from_string(lk_compare);
+        }
 
   /**
    * @brief Process a new image
@@ -142,9 +157,14 @@ protected:
   int min_px_dist;
 
   // How many pyramid levels to track
-  int pyr_levels = 3;
-  int half_patch_size = 10;
-  cv::Size win_size = cv::Size(2*half_patch_size+1, 2*half_patch_size+1);
+  int pyr_levels = -1;
+  int half_patch_size = -1;
+  int visualize = -1;
+  int step_mode = -1;
+  cv::Size win_size;
+  GyroPredictType predict_type;
+  GyroPredictType compare_type;
+  std::string save_folder = "";
 
   // Last set of image pyramids
   std::map<size_t, std::vector<cv::Mat>> img_pyramid_last;
