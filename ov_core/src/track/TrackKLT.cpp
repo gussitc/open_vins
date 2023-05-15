@@ -188,21 +188,22 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vect
   double max_focallength = std::max(K(0, 0), K(1, 1));
   double threshold = 2.0/max_focallength;
   double confidence = 0.999;
+  bool use_fisheye = camera_calib.at(cam_id)->use_fisheye;
   cv::Matx33d Rcl;
-  cv::Matx33d Rbc = camera_calib.at(cam_id)->T_imu_cam.get_minor<3,3>(0,0);
+  cv::Matx33d Rbc = camera_calib.at(cam_id)->Rbc;
   integrate_imu_measurements(message.timestamp, timestamp_last[cam_id], imu_meas, Rbc, Rcl);
   LKState lk_state{predict_type, pts0};
-  GyroPredictInput gyro_input{Rcl, K, D, img.cols, img.rows, half_patch_size};
+  GyroPredictInput gyro_input{Rcl, K, D, img.cols, img.rows, half_patch_size, use_fisheye};
   pixel_aware_prediction(lk_state, gyro_input);
   LKInput lk_input{img_pyramid_last[cam_id], imgpyr, pyr_levels, half_patch_size, epsilon, max_iterations};
   gyro_aided_lk(lk_state, lk_input);
-  perform_ransac(lk_state, K, D, threshold, confidence);
+  perform_ransac(lk_state, K, D, threshold, confidence, use_fisheye);
   if (visualize){
     Mat img0_bgr, img1_bgr;
     cv::cvtColor(img_last[cam_id], img0_bgr, cv::COLOR_GRAY2BGR);
     cv::cvtColor(img, img1_bgr, cv::COLOR_GRAY2BGR);
     draw_results(img0_bgr, img1_bgr, lk_state, half_patch_size);
-    cv::waitKey(0);
+    cv::waitKey(1);
   }
 
   for (size_t i = 0; i < pts_left_new.size(); i++) {

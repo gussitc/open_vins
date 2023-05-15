@@ -169,7 +169,11 @@ public:
   /// Gets the camera distortion
   cv::Vec4d get_D() { return camera_d_OPENCV; }
 
-  cv::Matx44d T_imu_cam;
+  void set_K(cv::Matx33d K) { camera_k_OPENCV = K; }
+  void set_D(cv::Vec4d D) { camera_d_OPENCV = D; }
+
+  cv::Matx33d Rbc;
+  bool use_fisheye;
 
   /// Gets the width of the camera images
   int w() { return _width; }

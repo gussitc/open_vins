@@ -22,9 +22,11 @@ def edit_config(parameter, value):
 
 def main():
     for type in lk_types:
+        print("Running " + type + "...")
         edit_config("lk_type", type.upper())
         subprocess.run(program_file)
         os.rename(root_folder + "/results.txt", root_folder + "/results_" + type + ".txt")
+        print('\n')
 
 if __name__ == "__main__":
     main()

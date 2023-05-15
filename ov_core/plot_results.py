@@ -39,7 +39,7 @@ def main():
         data_list.append(data)
 
     # data = np.stack(data_list, axis=2)
-    data = window_average_rows(np.stack(data_list, axis=2), 121)
+    data = window_average_rows(np.stack(data_list, axis=2), 61)
 
     for i in range(1, data.shape[1]):
         plt.figure()

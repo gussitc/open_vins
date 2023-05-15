@@ -35,6 +35,7 @@
 #include <opencv2/highgui/highgui.hpp>
 
 #include "cam/CamRadtan.h"
+#include "cam/CamEqui.h"
 #include "feat/Feature.h"
 #include "feat/FeatureDatabase.h"
 #include "track/TrackAruco.h"
@@ -45,6 +46,8 @@
 
 #include <opencv2/core/eigen.hpp>
 #include <sensor_msgs/Imu.h>
+#include "load_data.hpp"
+#include "utils.hpp"
 
 using namespace ov_core;
 
@@ -62,7 +65,7 @@ std::deque<double> clonetimes;
 ros::Time time_start;
 
 // How many cameras we will do visual tracking on (mono=1, stereo=2)
-int max_cameras = 2;
+int max_cameras = 1;
 
 // Our master function for tracking
 void handle_stereo(double time0, double time1, cv::Mat img0, cv::Mat img1);
@@ -80,8 +83,7 @@ bool show_visualization = false;
 int main(int argc, char **argv) {
 
   // Ensure we have a path, if the user passes it then we should use it
-  // std::string config_path = "unset_path.txt";
-  std::string config_path = "/home/gustav/catkin_ws_ov/src/open_vins/config/euroc_mav/estimator_config.yaml";
+  std::string config_path = "unset_path.txt";
   // if (argc > 1) {
   //   config_path = argv[1];
   // }
@@ -100,7 +102,7 @@ int main(int argc, char **argv) {
   parser->set_node_handler(nh);
 
   // Verbosity
-  std::string verbosity = "DEBUG";
+  std::string verbosity = "INFO";
   parser->parse_config("verbosity", verbosity);
   ov_core::Printer::setPrintLevel(verbosity);
 
@@ -112,11 +114,12 @@ int main(int argc, char **argv) {
   parser->parse_external("relative_config_imucam", "cam" + std::to_string(1), "rostopic", topic_camera1);
 
   // Location of the ROS bag we want to read in
-  std::string path_to_bag;
-  parser->parse_config("bag_path", path_to_bag, false);
+  std::string bag_file;
+  LOAD_CONFIG(bag_file);
+  parser->parse_config("bag_path", bag_file, false);
   // nh->param<std::string>("path_bag", path_to_bag, "/home/patrick/datasets/euroc_mav/V1_01_easy.bag");
   // nh->param<std::string>("path_bag", path_to_bag, "/home/patrick/datasets/open_vins/aruco_room_01.bag");
-  PRINT_INFO("ros bag path is: %s\n", path_to_bag.c_str());
+  PRINT_INFO("ros bag path is: %s\n", bag_file.c_str());
 
   // Get our start location and how much of the bag we want to play
   // Make the bag duration < 0 to just process to the end of the bag
@@ -124,24 +127,16 @@ int main(int argc, char **argv) {
   nh->param<double>("bag_start", bag_start, 0);
   nh->param<double>("bag_durr", bag_durr, -1);
 
-  Eigen::Matrix4d Tic_eigen;
-  cv::Matx44d T_imu_cam;
-  std::vector<double> intrinsics;
-  std::vector<double> distortion_coeffs;
-  std::string distortion_model;
-  std::string topic_imu;
+  std::string imu_topic = "";
+  std::string image_topic = "";
+  cv::Matx33d Rbc, K;
+  cv::Vec4d D;
   std::vector<int> resolution;
-
-  parser->parse_external("relative_config_imucam", "cam0", "T_imu_cam", Tic_eigen);
-  parser->parse_external("relative_config_imucam", "cam0", "intrinsics", intrinsics);
-  parser->parse_external("relative_config_imucam", "cam0", "distortion_model", distortion_model);
-  parser->parse_external("relative_config_imucam", "cam0", "distortion_coeffs", distortion_coeffs);
-  parser->parse_external("relative_config_imucam", "cam0", "resolution", resolution);
-  // assert(distortion_model == "equidistant");
-
-  parser->parse_external("relative_config_imu", "imu0", "rostopic", topic_imu);
-
-  cv::eigen2cv(Tic_eigen.eval(), T_imu_cam);
+  bool use_fisheye;
+  load_camera_params(K, D, Rbc, use_fisheye, resolution);  
+  LOAD_CONFIG(imu_topic);
+  LOAD_CONFIG(image_topic);
+  topic_camera0 = image_topic;
 
   //===================================================================================
   //===================================================================================
@@ -204,15 +199,16 @@ int main(int argc, char **argv) {
 
   // Fake camera info (we don't need this, as we are not using the normalized coordinates for anything)
   std::unordered_map<size_t, std::shared_ptr<CamBase>> cameras;
-  for (int i = 0; i < 2; i++) {
-    Eigen::Matrix<double, 8, 1> cam0_calib;
-    // cam0_calib << 1, 1, 0, 0, 0, 0, 0, 0;
-    // cam0_calib << fx, fy, cx, cy, k1, k2, p1, p2;
-    cam0_calib << intrinsics[0], intrinsics[1], intrinsics[2], intrinsics[3],
-                  distortion_coeffs[0], distortion_coeffs[1], distortion_coeffs[2], distortion_coeffs[3];
-    std::shared_ptr<CamBase> camera_calib = std::make_shared<CamRadtan>(resolution[0], resolution[1]);
-    camera_calib->T_imu_cam = T_imu_cam;
-    camera_calib->set_value(cam0_calib);
+  for (int i = 0; i < max_cameras; i++) {
+    std::shared_ptr<CamBase> camera_calib;
+    if(use_fisheye)
+      camera_calib = std::make_shared<CamEqui>(resolution[0], resolution[1]);
+    else
+      camera_calib = std::make_shared<CamRadtan>(resolution[0], resolution[1]);
+    camera_calib->Rbc = Rbc;
+    camera_calib->set_K(K);
+    camera_calib->set_D(D);
+    camera_calib->use_fisheye = use_fisheye;
     cameras.insert({i, camera_calib});
   }
 
@@ -228,7 +224,7 @@ int main(int argc, char **argv) {
 
   // Load rosbag here, and find messages we can play
   rosbag::Bag bag;
-  bag.open(path_to_bag, rosbag::bagmode::Read);
+  bag.open(bag_file, rosbag::bagmode::Read);
 
   // We should load the bag as a view
   // Here we go from beginning of the bag to the end of the bag
@@ -264,13 +260,16 @@ int main(int argc, char **argv) {
   double time1 = time_init.toSec();
 
   // Step through the rosbag
+  int k = 0;
   for (const rosbag::MessageInstance &m : view) {
+    cout << "Progress: " << setprecision(0) << fixed << 100*(k+1)/(double)view.size() << "%\r" << flush;
+    k++;
 
     // If ros is wants us to stop, break out
     if (!ros::ok())
       break;
 
-    if (m.getTopic() == topic_imu) {
+    if (m.getTopic() == imu_topic) {
       // PRINT_DEBUG("processing imu = %.3f sec\n", msgs.at(m).getTime().toSec() - time_init.toSec());
       const sensor_msgs::Imu::ConstPtr &msg = m.instantiate<sensor_msgs::Imu>();
 
@@ -321,7 +320,7 @@ int main(int argc, char **argv) {
     }
 
     // If we have both left and right, then process
-    if (has_left && has_right) {
+    if (has_left) {
       // process
       handle_stereo(time0, time1, img0, img1);
       // reset bools
