@@ -189,7 +189,7 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vect
     Mat img0_bgr, img1_bgr;
     cv::cvtColor(img_last[cam_id], img0_bgr, cv::COLOR_GRAY2BGR);
     cv::cvtColor(img, img1_bgr, cv::COLOR_GRAY2BGR);
-    draw_results(img0_bgr, img1_bgr, lk_state, lk_comp, half_patch_size, save_folder);
+    draw_results(img0_bgr, img1_bgr, lk_state, lk_comp, half_patch_size, message.timestamp, save_folder);
   }
 
   for (size_t i = 0; i < pts_left_new.size(); i++) {

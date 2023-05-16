@@ -4,7 +4,7 @@ matplotlib.use('GTK3Agg')
 import matplotlib.pyplot as plt
 import os
 
-lk_types = ["none", "translation", "euclidean", "affine", "perspective"]
+lk_types = ["none", "translation", "euclidean", "affine"]#, "perspective"]
 titles = ["fps", "lost_feats/frame", "track_length/lost_feat", "marg_tracks/frame"]
 
 def average_rows(data, n):
@@ -39,7 +39,7 @@ def main():
         data_list.append(data)
 
     # data = np.stack(data_list, axis=2)
-    data = window_average_rows(np.stack(data_list, axis=2), 61)
+    data = window_average_rows(np.stack(data_list, axis=2), 21)
 
     for i in range(1, data.shape[1]):
         plt.figure()
