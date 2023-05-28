@@ -72,7 +72,7 @@ void handle_stereo(double time0, double time1, cv::Mat img0, cv::Mat img1);
 
 // Added by Gustav
 std::ofstream results_fs;
-double start_time = 0;
+double first_timestamp = -1;
 double timestamp_prev = 0;
 double timestamp = 0;
 std::queue<ov_core::ImuData> imu_buffer;
@@ -237,7 +237,6 @@ int main(int argc, char **argv) {
   ros::Time time_init = view_full.getBeginTime();
   time_init += ros::Duration(bag_start);
   ros::Time time_finish = (bag_durr < 0) ? view_full.getEndTime() : time_init + ros::Duration(bag_durr);
-  start_time = time_init.toSec();
   PRINT_DEBUG("time start = %.6f\n", time_init.toSec());
   PRINT_DEBUG("time end   = %.6f\n", time_finish.toSec());
   view.addQuery(bag, time_init, time_finish);
@@ -299,6 +298,8 @@ int main(int argc, char **argv) {
       // img0 = cv_ptr->image.clone();
       time0 = cv_ptr->header.stamp.toSec();
       timestamp = time0;
+      if (first_timestamp == -1)
+        first_timestamp = timestamp;
     }
 
     //  Handle RIGHT camera
@@ -447,7 +448,7 @@ void handle_stereo(double time0, double time1, cv::Mat img0, cv::Mat img1) {
     double mpf = (double)num_margfeats / frames;
     // DEBUG PRINT OUT
     // PRINT_DEBUG("fps = %.2f | lost_feats/frame = %.2f | track_length/lost_feat = %.2f | marg_tracks/frame = %.2f\n", fps, lpf, fpf, mpf);
-    results_fs << timestamp - start_time << " " << fps << " " << lpf << " " << fpf << " " << mpf << std::endl;
+    results_fs << timestamp - first_timestamp << " " << fps << " " << lpf << " " << fpf << " " << mpf << std::endl;
     // Reset variables
     frames = 0;
     time_start = time_curr;

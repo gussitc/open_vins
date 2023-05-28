@@ -62,6 +62,8 @@ public:
           LOAD_CONFIG(step_mode);
           LOAD_CONFIG(pyr_levels);
           LOAD_CONFIG(half_patch_size);
+          LOAD_CONFIG(ransac_thresh);
+          LOAD_CONFIG(adaptive_thresh);
           win_size = cv::Size(2*half_patch_size+1, 2*half_patch_size+1);
 
           string lk_type = "", lk_compare = "";
@@ -157,6 +159,8 @@ protected:
   int min_px_dist;
 
   // How many pyramid levels to track
+  double ransac_thresh = 0;
+  double adaptive_thresh = 0;
   int pyr_levels = -1;
   int half_patch_size = -1;
   int visualize = -1;

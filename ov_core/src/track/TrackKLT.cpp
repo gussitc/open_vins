@@ -168,28 +168,32 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vect
   double epsilon = 0.01;
   int max_iterations = 30;
   double max_focallength = std::max(K(0, 0), K(1, 1));
-  double threshold = 2.0/max_focallength;
   double confidence = 0.999;
   bool use_fisheye = camera_calib.at(cam_id)->use_fisheye;
   cv::Matx33d Rcl;
   cv::Matx33d Rbc = camera_calib.at(cam_id)->Rbc;
   integrate_imu_measurements(message.timestamp, timestamp_last[cam_id], imu_meas, Rbc, Rcl);
   LKState lk_state{predict_type, pts0};
-  GyroPredictInput gyro_input{Rcl, K, D, img.cols, img.rows, half_patch_size, use_fisheye};
-  pixel_aware_prediction(lk_state, gyro_input);
+  GyroPredictInput gyro_input{Rcl, K, D, img.cols, img.rows, half_patch_size, use_fisheye, adaptive_thresh};
+  predict_patches(lk_state, gyro_input);
   LKInput lk_input{img_pyramid_last[cam_id], imgpyr, pyr_levels, half_patch_size, epsilon, max_iterations};
   gyro_aided_lk(lk_state, lk_input);
-  perform_ransac(lk_state, K, D, threshold, confidence, use_fisheye);
+  perform_ransac(lk_state, K, D, ransac_thresh/max_focallength, confidence, use_fisheye);
   if (visualize){
+    static double first_timestamp = -1;
+    if (first_timestamp == -1) {
+      first_timestamp = message.timestamp;
+    }
     LKState lk_comp{compare_type, pts0};
-    pixel_aware_prediction(lk_comp, gyro_input);
+    predict_patches(lk_comp, gyro_input);
     gyro_aided_lk(lk_comp, lk_input);
-    perform_ransac(lk_comp, K, D, threshold, confidence, use_fisheye);
+    perform_ransac(lk_comp, K, D, ransac_thresh/max_focallength, confidence, use_fisheye);
 
     Mat img0_bgr, img1_bgr;
     cv::cvtColor(img_last[cam_id], img0_bgr, cv::COLOR_GRAY2BGR);
     cv::cvtColor(img, img1_bgr, cv::COLOR_GRAY2BGR);
-    draw_results(img0_bgr, img1_bgr, lk_state, lk_comp, half_patch_size, message.timestamp, save_folder);
+    draw_dist_and_undist_predictions(img0_bgr, img1_bgr, lk_state, Rcl, K, D, half_patch_size, gyro_input.fisheye);
+    draw_results(img0_bgr, img1_bgr, lk_state, lk_comp, half_patch_size, message.timestamp-first_timestamp, save_folder);
   }
 
   for (size_t i = 0; i < pts_left_new.size(); i++) {
