@@ -175,7 +175,7 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vect
   integrate_imu_measurements(message.timestamp, timestamp_last[cam_id], imu_meas, Rbc, Rcl);
   LKState lk_state{predict_type, pts0};
   GyroPredictInput gyro_input{Rcl, K, D, img.cols, img.rows, half_patch_size, use_fisheye, adaptive_thresh};
-  predict_patches(lk_state, gyro_input);
+  gyro_prediction(lk_state, gyro_input);
   LKInput lk_input{img_pyramid_last[cam_id], imgpyr, pyr_levels, half_patch_size, epsilon, max_iterations};
   gyro_aided_lk(lk_state, lk_input);
   perform_ransac(lk_state, K, D, ransac_thresh/max_focallength, confidence, use_fisheye);
@@ -185,7 +185,7 @@ void TrackKLT::feed_monocular_and_imu(const CameraData &message, const std::vect
       first_timestamp = message.timestamp;
     }
     LKState lk_comp{compare_type, pts0};
-    predict_patches(lk_comp, gyro_input);
+    gyro_prediction(lk_comp, gyro_input);
     gyro_aided_lk(lk_comp, lk_input);
     perform_ransac(lk_comp, K, D, ransac_thresh/max_focallength, confidence, use_fisheye);
 
@@ -532,7 +532,8 @@ void TrackKLT::perform_detection_monocular(const std::vector<cv::Mat> &img0pyr, 
 
   // First compute how many more features we need to extract from this image
   // If we don't need any features, just return
-  double min_feat_percent = 0.50;
+  // double min_feat_percent = 0.50;
+  double min_feat_percent = 1.0;
   int num_featsneeded = num_features - (int)pts0.size();
   if (num_featsneeded < std::min(20, (int)(min_feat_percent * num_features)))
     return;

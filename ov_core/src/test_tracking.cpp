@@ -60,7 +60,7 @@ int frames = 0;
 int num_lostfeats = 0;
 int num_margfeats = 0;
 int featslengths = 0;
-int clone_states = 10;
+int clone_states = 5;
 std::deque<double> clonetimes;
 ros::Time time_start;
 
